@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,11 +32,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCustomers, addCustomer, updateCustomer, deleteCustomer } from '@/services/customerService';
-import type { Customer } from '@/types';
+import type { Customer, Sale } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from 'date-fns';
-import { CustomerSalesDialog } from '@/components/dialogs/customer-sales-dialog'; // Import the new dialog
+import { CustomerSalesDialog } from '@/components/dialogs/customer-sales-dialog';
+import { SalesDetailsDialog } from '@/components/dialogs/sales-details-dialog'; // Main sales details dialog
 
 const customerSchema = z.object({
   name: z.string().min(1, "Customer name is required"),
@@ -51,14 +52,19 @@ type CustomerFormData = z.infer<typeof customerSchema>;
 export default function CustomersPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [customerToEdit, setCustomerToEdit] = useState<Customer | null>(null);
   const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
   const [customerToDeleteId, setCustomerToDeleteId] = useState<string | null>(null);
-  const [isSalesHistoryDialogOpen, setIsSalesHistoryDialogOpen] = useState(false);
+  
+  const [isCustSalesHistoryDialogOpen, setIsCustSalesHistoryDialogOpen] = useState(false);
   const [selectedCustomerForHistory, setSelectedCustomerForHistory] = useState<Customer | null>(null);
 
+  const [isMainSalesDetailsDialogOpen, setIsMainSalesDetailsDialogOpen] = useState(false);
+  const [selectedSaleForMainDetails, setSelectedSaleForMainDetails] = useState<Sale | null>(null);
+  
+  const [searchTerm, setSearchTerm] = useState("");
 
   const form = useForm<CustomerFormData>({
     resolver: zodResolver(customerSchema),
@@ -90,6 +96,16 @@ export default function CustomersPage() {
     queryKey: ['customers'],
     queryFn: getCustomers,
   });
+
+  const filteredCustomers = useMemo(() => {
+    if (!customers) return [];
+    if (!searchTerm) return customers;
+    return customers.filter(customer =>
+      customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (customer.phone && customer.phone.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  }, [customers, searchTerm]);
 
   const addCustomerMutation = useMutation({
     mutationFn: addCustomer,
@@ -161,9 +177,20 @@ export default function CustomersPage() {
 
   const handleViewPurchaseHistory = (customer: Customer) => {
     setSelectedCustomerForHistory(customer);
-    setIsSalesHistoryDialogOpen(true);
+    setIsCustSalesHistoryDialogOpen(true);
+  };
+
+  const handleViewSaleDetailsRequestFromCustomerDialog = (sale: Sale) => {
+    setSelectedSaleForMainDetails(sale);
+    setIsCustSalesHistoryDialogOpen(false); // Close small dialog
+    setIsMainSalesDetailsDialogOpen(true); // Open main dialog
   };
   
+  const handleReprintInvoiceFromDetails = (saleId: string) => {
+    toast({ title: "Print Simulated", description: `Invoice for Sale ID: ${saleId.substring(0,8)}... sent to printer (simulated).` });
+  };
+
+
   const getAvatarFallback = (name?: string | null) => {
     if (!name) return '??';
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
@@ -180,7 +207,7 @@ export default function CustomersPage() {
 
       <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => {
         setIsFormDialogOpen(isOpen);
-        if (!isOpen) setCustomerToEdit(null); 
+        if (!isOpen) setCustomerToEdit(null);
       }}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
@@ -290,20 +317,29 @@ export default function CustomersPage() {
 
       {selectedCustomerForHistory && (
         <CustomerSalesDialog
-          open={isSalesHistoryDialogOpen}
-          onOpenChange={setIsSalesHistoryDialogOpen}
+          open={isCustSalesHistoryDialogOpen}
+          onOpenChange={setIsCustSalesHistoryDialogOpen}
           customerId={selectedCustomerForHistory.id!}
           customerName={selectedCustomerForHistory.name}
+          onViewSaleDetailsRequest={handleViewSaleDetailsRequestFromCustomerDialog}
         />
       )}
 
+      <SalesDetailsDialog
+        open={isMainSalesDetailsDialogOpen}
+        onOpenChange={setIsMainSalesDetailsDialogOpen}
+        sale={selectedSaleForMainDetails}
+        onReprint={handleReprintInvoiceFromDetails}
+        // No onReturnSale or onAddPayment passed, so these actions won't be available
+      />
 
       <Card>
         <CardHeader>
           <div className="relative w-full max-w-md">
             <Input
               placeholder="Search customers by name, email, or phone..."
-              disabled // Search not implemented yet
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
             <UserSearch className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           </div>
@@ -324,7 +360,7 @@ export default function CustomersPage() {
             </div>
           ) : error ? (
              <div className="text-destructive flex items-center gap-2 p-4 border border-destructive/50 rounded-md">
-                <AlertCircle className="h-5 w-5" /> 
+                <AlertCircle className="h-5 w-5" />
                 <span>Error loading customers: {error.message}</span>
               </div>
           ) : (
@@ -341,7 +377,7 @@ export default function CustomersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {customers?.map((customer) => (
+                {filteredCustomers.map((customer) => (
                   <TableRow key={customer.id}>
                     <TableCell>
                       <Avatar>
@@ -379,10 +415,10 @@ export default function CustomersPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                 {customers?.length === 0 && (
+                 {filteredCustomers.length === 0 && (
                     <TableRow>
                         <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                            No customers found. Add your first customer!
+                            No customers found{searchTerm ? ` matching "${searchTerm}"` : ". Add your first customer!"}
                         </TableCell>
                     </TableRow>
                 )}

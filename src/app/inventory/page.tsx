@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,30 +24,38 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from '@/components/ui/textarea';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
+import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { getProducts, addProduct } from '@/services/productService';
+import { getProducts, addProduct, updateProduct, deleteProduct } from '@/services/productService';
 import type { Product } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
-const productCategories = ["Appliances", "Brewing Gear", "Consumables", "Accessories", "Other"];
+const productCategories = ["All Categories", "Appliances", "Brewing Gear", "Consumables", "Accessories", "Other"];
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
-  category: z.string().min(1, "Category is required"),
+  category: z.string().min(1, "Category is required").refine(val => productCategories.slice(1).includes(val), { message: "Invalid category" }),
   price: z.coerce.number().min(0, "Price must be a positive number"),
   stock: z.coerce.number().int().min(0, "Stock must be a non-negative integer"),
   image: z.string().url("Must be a valid URL").optional().or(z.literal('')),
-  hint: z.string().optional(),
+  hint: z.string().max(20, "Hint too long (max 2 words)").optional(),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -55,45 +63,130 @@ type ProductFormData = z.infer<typeof productSchema>;
 export default function InventoryPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+
+  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
+  const [productToEdit, setProductToEdit] = useState<Product | null>(null);
+  const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
+  const [productToDeleteId, setProductToDeleteId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>(productCategories[0]);
+
+
+  const form = useForm<ProductFormData>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      name: "", category: "", price: 0, stock: 0, image: "", hint: "",
+    },
+  });
+
+   useEffect(() => {
+    if (productToEdit) {
+      form.reset({
+        name: productToEdit.name,
+        category: productToEdit.category,
+        price: productToEdit.price,
+        stock: productToEdit.stock,
+        image: productToEdit.image || "",
+        hint: productToEdit.hint || "",
+      });
+    } else {
+      form.reset({ name: "", category: "", price: 0, stock: 0, image: "", hint: "" });
+    }
+  }, [productToEdit, form, isFormDialogOpen]);
+
 
   const { data: products, isLoading, error } = useQuery<Product[], Error>({
     queryKey: ['products'],
     queryFn: getProducts,
   });
 
+  const filteredProducts = useMemo(() => {
+    if (!products) return [];
+    let items = products;
+    if (selectedCategory !== "All Categories") {
+      items = items.filter(product => product.category === selectedCategory);
+    }
+    if (searchTerm) {
+      items = items.filter(product =>
+        product.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    return items;
+  }, [products, searchTerm, selectedCategory]);
+
+
   const addProductMutation = useMutation({
     mutationFn: addProduct,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast({ title: "Success", description: "Product added successfully." });
-      setIsAddDialogOpen(false);
-      form.reset();
+      setIsFormDialogOpen(false);
     },
     onError: (error) => {
       toast({ variant: "destructive", title: "Error", description: `Failed to add product: ${error.message}` });
     },
   });
 
-  const form = useForm<ProductFormData>({
-    resolver: zodResolver(productSchema),
-    defaultValues: {
-      name: "",
-      category: "",
-      price: 0,
-      stock: 0,
-      image: "",
-      hint: "",
+  const updateProductMutation = useMutation({
+    mutationFn: (data: { id: string; productData: ProductFormData }) => updateProduct(data.id, data.productData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast({ title: "Success", description: "Product updated successfully." });
+      setIsFormDialogOpen(false);
+      setProductToEdit(null);
+    },
+    onError: (error) => {
+      toast({ variant: "destructive", title: "Error", description: `Failed to update product: ${error.message}` });
     },
   });
 
+  const deleteProductMutation = useMutation({
+    mutationFn: deleteProduct,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast({ title: "Success", description: "Product deleted successfully." });
+      setIsConfirmDeleteDialogOpen(false);
+    },
+    onError: (error) => {
+      toast({ variant: "destructive", title: "Error", description: `Failed to delete product: ${error.message}` });
+      setIsConfirmDeleteDialogOpen(false);
+    },
+  });
+
+
   const onSubmit: SubmitHandler<ProductFormData> = (data) => {
-    addProductMutation.mutate(data);
+    if (productToEdit && productToEdit.id) {
+      updateProductMutation.mutate({ id: productToEdit.id, productData: data });
+    } else {
+      addProductMutation.mutate(data);
+    }
+  };
+
+  const handleAddNewProduct = () => {
+    setProductToEdit(null);
+    // form.reset(); // useEffect handles reset
+    setIsFormDialogOpen(true);
+  };
+
+  const handleEditProduct = (product: Product) => {
+    setProductToEdit(product);
+    setIsFormDialogOpen(true);
+  };
+
+  const handleDeleteProduct = (id: string) => {
+    setProductToDeleteId(id);
+    setIsConfirmDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (productToDeleteId) {
+      deleteProductMutation.mutate(productToDeleteId);
+    }
   };
 
   const getProductStatus = (stock: number): { text: string; variant: "default" | "secondary" | "destructive" } => {
     if (stock === 0) return { text: "Out of Stock", variant: "destructive" };
-    if (stock <= 10) return { text: "Low Stock", variant: "secondary" };
+    if (stock <= 10) return { text: "Low Stock", variant: "secondary" }; // Assuming low stock threshold is 10
     return { text: "In Stock", variant: "default" };
   };
 
@@ -101,17 +194,19 @@ export default function InventoryPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-3xl font-bold font-headline">Inventory Management</h1>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <PlusCircle className="mr-2 h-4 w-4" /> Add New Product
-            </Button>
-          </DialogTrigger>
+          <Button onClick={handleAddNewProduct}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Add New Product
+          </Button>
+      </div>
+        <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => {
+            setIsFormDialogOpen(isOpen);
+            if (!isOpen) setProductToEdit(null);
+        }}>
           <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
-              <DialogTitle>Add New Product</DialogTitle>
+              <DialogTitle>{productToEdit ? "Edit Product" : "Add New Product"}</DialogTitle>
               <DialogDescription>
-                Enter the details for the new product. Click save when you're done.
+                {productToEdit ? "Update product details." : "Enter new product details."}
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
@@ -142,7 +237,7 @@ export default function InventoryPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {productCategories.map(cat => (
+                          {productCategories.slice(1).map(cat => ( // Exclude "All Categories"
                             <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                           ))}
                         </SelectContent>
@@ -206,16 +301,37 @@ export default function InventoryPage() {
                   )}
                 />
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-                  <Button type="submit" disabled={addProductMutation.isPending}>
-                    {addProductMutation.isPending ? "Saving..." : "Save Product"}
+                  <Button type="button" variant="outline" onClick={() => setIsFormDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={addProductMutation.isPending || updateProductMutation.isPending}>
+                    {(addProductMutation.isPending || updateProductMutation.isPending) ? "Saving..." : "Save Product"}
                   </Button>
                 </DialogFooter>
               </form>
             </Form>
           </DialogContent>
         </Dialog>
-      </div>
+
+      <AlertDialog open={isConfirmDeleteDialogOpen} onOpenChange={setIsConfirmDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the product.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setProductToDeleteId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={deleteProductMutation.isPending}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {deleteProductMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
 
       <Card>
         <CardHeader>
@@ -223,20 +339,22 @@ export default function InventoryPage() {
             <div className="relative w-full max-w-xs">
               <Input
                 placeholder="Search products by name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
               <PackageSearch className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
-                  <Filter className="mr-2 h-4 w-4" /> Filter by Category
+                  <Filter className="mr-2 h-4 w-4" /> Filter: {selectedCategory}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Categories</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {productCategories.map(cat => (
-                   <DropdownMenuItem key={cat}>{cat}</DropdownMenuItem>
+                   <DropdownMenuItem key={cat} onSelect={() => setSelectedCategory(cat)}>{cat}</DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -257,8 +375,8 @@ export default function InventoryPage() {
               ))}
             </div>
           ) : error ? (
-             <div className="text-destructive flex items-center gap-2">
-                <AlertCircle className="h-5 w-5" /> 
+             <div className="text-destructive flex items-center gap-2 p-4 border border-destructive/50 rounded-md">
+                <AlertCircle className="h-5 w-5" />
                 <span>Error loading products: {error.message}</span>
               </div>
           ) : (
@@ -275,40 +393,47 @@ export default function InventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {products?.map((product) => {
+                {filteredProducts.map((product) => {
                   const status = getProductStatus(product.stock);
                   return (
                     <TableRow key={product.id}>
                       <TableCell>
-                        <Image 
-                          src={product.image || `https://placehold.co/40x40.png?text=${product.name.substring(0,2)}`} 
-                          alt={product.name} 
-                          width={40} 
-                          height={40} 
+                        <Image
+                          src={product.image || `https://placehold.co/40x40.png?text=${product.name.substring(0,2)}`}
+                          alt={product.name}
+                          width={40}
+                          height={40}
                           className="rounded object-cover"
                           data-ai-hint={product.hint || product.name.split(" ").slice(0,2).join(" ").toLowerCase()}
                         />
                       </TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell>{product.category}</TableCell>
-                      <TableCell className="text-right">${product.price.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">₹{product.price.toFixed(2)}</TableCell>
                       <TableCell className="text-center">{product.stock}</TableCell>
                       <TableCell>
-                        <Badge variant={status.variant}>
+                        <Badge variant={status.variant} className={status.variant === 'default' ? 'bg-accent text-accent-foreground' : ''}>
                           {status.text}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" className="mr-1" title="Edit Product" disabled> {/* TODO: Implement Edit */}
+                        <Button variant="ghost" size="icon" className="mr-1" title="Edit Product" onClick={() => handleEditProduct(product)}>
                           <Edit3 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Product" disabled> {/* TODO: Implement Delete */}
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Product" onClick={() => product.id && handleDeleteProduct(product.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
                   );
                 })}
+                {filteredProducts.length === 0 && (
+                     <TableRow>
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                            No products found{searchTerm || selectedCategory !== "All Categories" ? " matching your criteria" : ". Add your first product!"}
+                        </TableCell>
+                    </TableRow>
+                )}
               </TableBody>
             </Table>
           )}

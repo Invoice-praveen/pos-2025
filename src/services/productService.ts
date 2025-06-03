@@ -1,12 +1,14 @@
 
+'use server';
+
 import { db } from '@/lib/firebase';
 import type { Product } from '@/types';
-import { 
-  collection, 
-  getDocs, 
-  addDoc, 
-  serverTimestamp, 
-  query, 
+import {
+  collection,
+  getDocs,
+  addDoc,
+  serverTimestamp,
+  query,
   orderBy,
   doc,
   updateDoc,
@@ -16,11 +18,13 @@ import {
 
 const productsCollectionRef = collection(db, 'products');
 
-// Helper to convert Firestore Timestamp to ISO string or return string if already
 const convertTimestampToString = (timestampField: unknown): string | undefined => {
   if (!timestampField) return undefined;
-  if (typeof (timestampField as Timestamp).toDate === 'function') {
-    return (timestampField as Timestamp).toDate().toISOString();
+  if (timestampField instanceof Timestamp) { // Check if it's already a Firestore Timestamp
+    return timestampField.toDate().toISOString();
+  }
+  if (typeof (timestampField as any)?.toDate === 'function') { // Check for toDate method (duck typing for server-side resolved timestamps)
+    return (timestampField as any).toDate().toISOString();
   }
   if (typeof timestampField === 'string') {
     return timestampField;
@@ -34,7 +38,7 @@ export async function getProducts(): Promise<Product[]> {
   const snapshot = await getDocs(q);
   return snapshot.docs.map(docSnapshot => {
     const data = docSnapshot.data();
-    return { 
+    return {
       id: docSnapshot.id,
       name: data.name,
       category: data.category,
@@ -55,15 +59,15 @@ export async function addProduct(productData: Omit<Product, 'id' | 'createdAt' |
     updatedAt: serverTimestamp(),
   });
   const nowISO = new Date().toISOString();
-  return { 
-    ...productData, 
-    id: docRef.id, 
-    createdAt: nowISO, // Return ISO string for client
-    updatedAt: nowISO  // Return ISO string for client
-  }; 
+  return {
+    ...productData,
+    id: docRef.id,
+    createdAt: nowISO,
+    updatedAt: nowISO
+  };
 }
 
-export async function updateProduct(id: string, productData: Partial<Omit<Product, 'id' | 'createdAt'>>): Promise<void> {
+export async function updateProduct(id: string, productData: Partial<Omit<Product, 'id' | 'createdAt' | 'updatedAt'>>): Promise<void> {
   const productDoc = doc(db, 'products', id);
   await updateDoc(productDoc, {
     ...productData,

@@ -24,13 +24,14 @@ interface CustomerSalesDialogProps {
   onOpenChange: (open: boolean) => void;
   customerId: string;
   customerName: string;
+  onViewSaleDetailsRequest?: (sale: Sale) => void; // Callback to request opening main details dialog
 }
 
-export function CustomerSalesDialog({ open, onOpenChange, customerId, customerName }: CustomerSalesDialogProps) {
+export function CustomerSalesDialog({ open, onOpenChange, customerId, customerName, onViewSaleDetailsRequest }: CustomerSalesDialogProps) {
   const { data: sales, isLoading, error } = useQuery<Sale[], Error>({
     queryKey: ['customerSales', customerId],
     queryFn: () => getSalesByCustomerId(customerId),
-    enabled: !!customerId && open, // Only fetch when dialog is open and customerId is available
+    enabled: !!customerId && open, 
   });
 
   const getStatusVariant = (status?: string): "default" | "secondary" | "destructive" | "outline" => {
@@ -44,6 +45,12 @@ export function CustomerSalesDialog({ open, onOpenChange, customerId, customerNa
     }
   };
 
+  const handleSaleIdClick = (sale: Sale) => {
+    if (onViewSaleDetailsRequest) {
+      onViewSaleDetailsRequest(sale);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
@@ -53,7 +60,7 @@ export function CustomerSalesDialog({ open, onOpenChange, customerId, customerNa
             Sales History for {customerName}
           </DialogTitle>
           <DialogDescription>
-            Showing all recorded sales for this customer.
+            Showing all recorded sales for this customer. Click an ID to view full details.
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 max-h-[60vh] overflow-y-auto">
@@ -88,13 +95,20 @@ export function CustomerSalesDialog({ open, onOpenChange, customerId, customerNa
                 <TableBody>
                   {sales.map((sale) => (
                     <TableRow key={sale.id}>
-                      <TableCell className="font-medium text-xs">{sale.id?.substring(0, 8)}...</TableCell>
+                      <TableCell 
+                        className="font-medium text-xs hover:underline cursor-pointer text-primary"
+                        onClick={() => handleSaleIdClick(sale)}
+                      >
+                        {sale.id?.substring(0, 8)}...
+                      </TableCell>
                       <TableCell>{format(new Date(sale.saleDate), 'PP')}</TableCell>
                       <TableCell className="text-right">₹{sale.totalAmount.toFixed(2)}</TableCell>
                       <TableCell>
                         <Badge variant={getStatusVariant(sale.status)}  className={
-                            sale.status === 'Completed' ? 'bg-accent text-accent-foreground hover:bg-accent/90' : 
-                            sale.status === 'Returned' || sale.status === 'Cancelled' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''
+                            sale.status === 'Completed' ? 'bg-accent text-accent-foreground hover:bg-accent/90' :
+                            sale.status === 'Returned' || sale.status === 'Cancelled' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' :
+                            sale.status === 'PendingPayment' ? 'bg-yellow-500 text-yellow-50 hover:bg-yellow-500/90' :
+                            sale.status === 'PartiallyPaid' ? 'bg-blue-500 text-blue-50 hover:bg-blue-500/90' : ''
                         }>
                           {sale.status || 'Unknown'}
                         </Badge>

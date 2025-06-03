@@ -8,19 +8,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, History, FileText, Printer, RotateCcw, Eye, ShoppingBag, CreditCard } from "lucide-react";
+import { AlertCircle, History, Eye } from "lucide-react"; // Removed Printer, RotateCcw, CreditCard
 import { getSales, returnSale, addPaymentToSale } from '@/services/saleService';
 import type { Sale, SaleItem, SalePayment } from '@/types';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/hooks/use-toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { SalesDetailsDialog } from '@/components/dialogs/sales-details-dialog'; // Import new dialog
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,13 +24,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent as AddPaymentDialogContent, // Renamed to avoid conflict
+  DialogHeader as AddPaymentDialogHeader,
+  DialogTitle as AddPaymentDialogTitle,
+  DialogDescription as AddPaymentDialogDescription,
+  DialogFooter as AddPaymentDialogFooter,
+} from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 
-const paymentModes = ["Cash", "UPI", "Card", "Other"]; // Re-use from sales page or centralize
+const paymentModes = ["Cash", "UPI", "Card", "Other"];
 
 export default function SalesHistoryPage() {
   const { toast } = useToast();
@@ -62,14 +62,16 @@ export default function SalesHistoryPage() {
     mutationFn: (data: { saleId: string; items: SaleItem[] }) => returnSale(data.saleId, data.items),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['salesHistory'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] }); 
-      queryClient.invalidateQueries({ queryKey: ['customers'] }); // Invalidate customers due to potential totalSpent changes indirectly
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast({ title: "Success", description: `Sale ID: ${variables.saleId.substring(0,8)}... marked as Returned and stock updated.` });
       setIsReturnConfirmOpen(false);
       setSaleToReturn(null);
-      if (isDetailsDialogOpen && selectedSaleForDetails?.id === variables.saleId) { // Refresh details if open
-          const updatedSale = sales?.find(s => s.id === variables.saleId);
-          if (updatedSale) setSelectedSaleForDetails({...updatedSale, status: 'Returned'});
+      // Refresh details if open
+      if (isDetailsDialogOpen && selectedSaleForDetails?.id === variables.saleId) {
+          const updatedSale = queryClient.getQueryData<Sale[]>(['salesHistory'])?.find(s => s.id === variables.saleId);
+          if (updatedSale) setSelectedSaleForDetails(updatedSale);
+          else setIsDetailsDialogOpen(false); // Close if not found (shouldn't happen)
       }
     },
     onError: (error: Error, variables) => {
@@ -78,25 +80,25 @@ export default function SalesHistoryPage() {
       setSaleToReturn(null);
     },
   });
-  
+
   const addPaymentMutation = useMutation({
-    mutationFn: (data: { 
-        saleId: string; 
-        payment: SalePayment; 
-        currentTotalAmount: number; 
-        currentAmountReceived: number; 
+    mutationFn: (data: {
+        saleId: string;
+        payment: SalePayment;
+        currentTotalAmount: number;
+        currentAmountReceived: number;
         currentPayments: SalePayment[];
     }) => addPaymentToSale(data.saleId, data.payment, data.currentTotalAmount, data.currentAmountReceived, data.currentPayments),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['salesHistory'] });
-      queryClient.invalidateQueries({ queryKey: ['customers'] }); // Invalidate customers due to potential totalSpent changes indirectly
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast({ title: "Success", description: `Payment added to Sale ID: ${variables.saleId.substring(0,8)}...` });
       setIsAddPaymentDialogOpen(false);
       setNewPaymentAmount("");
-      if (isDetailsDialogOpen && selectedSaleForDetails?.id === variables.saleId) { // Refresh details if open
-          // This is tricky, ideally refetch just this sale or optimistically update
-          // For now, user will see change on next dialog open or full list refresh
-          setIsDetailsDialogOpen(false); // Close and reopen to see fresh data
+       if (isDetailsDialogOpen && selectedSaleForDetails?.id === variables.saleId) {
+          const updatedSale = queryClient.getQueryData<Sale[]>(['salesHistory'])?.find(s => s.id === variables.saleId);
+          if (updatedSale) setSelectedSaleForDetails(updatedSale);
+          else setIsDetailsDialogOpen(false);
       }
     },
     onError: (error: Error, variables) => {
@@ -119,6 +121,8 @@ export default function SalesHistoryPage() {
       toast({variant: "outline", title: "Already Returned", description: "This sale has already been marked as returned."});
       return;
     }
+    setSelectedSaleForDetails(null); // Close details dialog if open
+    setIsDetailsDialogOpen(false);
     setSaleToReturn(sale);
     setIsReturnConfirmOpen(true);
   };
@@ -130,8 +134,10 @@ export default function SalesHistoryPage() {
   };
 
   const handleOpenAddPaymentDialog = (sale: Sale) => {
+    setSelectedSaleForDetails(null); // Close details dialog if open
+    setIsDetailsDialogOpen(false);
     setSaleForNewPayment(sale);
-    setNewPaymentAmount("");
+    setNewPaymentAmount( Math.max(0, (sale.totalAmount || 0) - (sale.amountReceived || 0)).toFixed(2) );
     setNewPaymentMode(paymentModes[0]);
     setIsAddPaymentDialogOpen(true);
   };
@@ -152,10 +158,9 @@ export default function SalesHistoryPage() {
     });
   };
 
-
   const getStatusVariant = (status?: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
-      case 'Completed': return 'default'; 
+      case 'Completed': return 'default';
       case 'PendingPayment': return 'secondary';
       case 'PartiallyPaid': return 'outline';
       case 'Cancelled': return 'destructive';
@@ -163,14 +168,6 @@ export default function SalesHistoryPage() {
       default: return 'outline';
     }
   };
-  
-  const renderDetailRow = (label: string, value: string | number | ReactNode, isAmount = false, currency = "₹") => (
-    <div className="flex justify-between py-1 text-sm">
-      <span className="text-muted-foreground">{label}:</span>
-      <span className={isAmount ? 'font-semibold' : ''}>{isAmount && typeof value === 'number' ? `${currency}${value.toFixed(2)}` : value}</span>
-    </div>
-  );
-
 
   return (
     <div className="flex flex-col gap-6">
@@ -230,11 +227,11 @@ export default function SalesHistoryPage() {
                     <TableCell>{format(new Date(sale.saleDate), 'PPpp')}</TableCell>
                     <TableCell className="text-right">₹{sale.totalAmount.toFixed(2)}</TableCell>
                     <TableCell>
-                      <Badge 
-                        variant={getStatusVariant(sale.status)} 
+                      <Badge
+                        variant={getStatusVariant(sale.status)}
                         className={
-                            sale.status === 'Completed' ? 'bg-accent text-accent-foreground hover:bg-accent/90' : 
-                            sale.status === 'Returned' || sale.status === 'Cancelled' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 
+                            sale.status === 'Completed' ? 'bg-accent text-accent-foreground hover:bg-accent/90' :
+                            sale.status === 'Returned' || sale.status === 'Cancelled' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' :
                             sale.status === 'PendingPayment' ? 'bg-yellow-500 text-yellow-50 hover:bg-yellow-500/90' :
                             sale.status === 'PartiallyPaid' ? 'bg-blue-500 text-blue-50 hover:bg-blue-500/90' : ''
                         }
@@ -246,9 +243,6 @@ export default function SalesHistoryPage() {
                       <Button variant="ghost" size="icon" title="View Details" onClick={() => handleViewDetails(sale)}>
                         <Eye className="h-4 w-4" />
                       </Button>
-                       <Button variant="ghost" size="icon" title="Return Bill" onClick={() => handleOpenReturnDialog(sale)} disabled={sale.status === 'Returned' || sale.status === 'Cancelled'}>
-                        <RotateCcw className="h-4 w-4" />
-                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -258,103 +252,21 @@ export default function SalesHistoryPage() {
         </CardContent>
       </Card>
 
-      {/* View Details Dialog */}
-      <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Sale Details (ID: {selectedSaleForDetails?.id?.substring(0, 8)}...)</DialogTitle>
-            <DialogDescription>
-              Detailed information for the selected sale.
-            </DialogDescription>
-          </DialogHeader>
-          {selectedSaleForDetails && (
-            <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Customer &amp; Date</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm space-y-1">
-                  {renderDetailRow("Customer", selectedSaleForDetails.customerName)}
-                  {renderDetailRow("Sale Date", format(new Date(selectedSaleForDetails.saleDate), 'PPpp'))}
-                  {renderDetailRow("Status", <Badge variant={getStatusVariant(selectedSaleForDetails.status)} className={
-                      selectedSaleForDetails.status === 'Completed' ? 'bg-accent text-accent-foreground' : 
-                      selectedSaleForDetails.status === 'Returned' || selectedSaleForDetails.status === 'Cancelled' ? 'bg-destructive text-destructive-foreground' : 
-                      selectedSaleForDetails.status === 'PendingPayment' ? 'bg-yellow-500 text-yellow-50' :
-                      selectedSaleForDetails.status === 'PartiallyPaid' ? 'bg-blue-500 text-blue-50' : ''
-                    }>{selectedSaleForDetails.status || 'Unknown'}</Badge>)}
-                </CardContent>
-              </Card>
+      <SalesDetailsDialog
+        open={isDetailsDialogOpen}
+        onOpenChange={setIsDetailsDialogOpen}
+        sale={selectedSaleForDetails}
+        onReprint={handleReprintInvoice}
+        onReturnSale={handleOpenReturnDialog}
+        onAddPayment={handleOpenAddPaymentDialog}
+      />
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Items Sold ({selectedSaleForDetails.totalItems})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {selectedSaleForDetails.items.map((item, index) => (
-                    <div key={index} className="py-2 border-b last:border-b-0">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">{item.itemName}</span>
-                        <span className="font-semibold">₹{item.total.toFixed(2)}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {item.qty} {item.unit} x ₹{item.priceUnit.toFixed(2)}
-                        {item.discount > 0 && ` (Disc: ₹${item.discount.toFixed(2)})`}
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardHeader className="pb-2">
-                   <CardTitle className="text-base">Payment Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1">
-                  {renderDetailRow("Sub Total", selectedSaleForDetails.subTotal, true)}
-                  {selectedSaleForDetails.totalDiscount > 0 && renderDetailRow("Total Discount", -selectedSaleForDetails.totalDiscount, true)}
-                  {selectedSaleForDetails.totalTax > 0 && renderDetailRow("Total Tax", selectedSaleForDetails.totalTax, true)}
-                  {selectedSaleForDetails.roundOff !== 0 && renderDetailRow("Round Off", selectedSaleForDetails.roundOff, true)}
-                  <Separator className="my-2" />
-                  {renderDetailRow("Grand Total", selectedSaleForDetails.totalAmount, true)}
-                  <Separator className="my-2" />
-                   <Label className="text-xs text-muted-foreground">Payments Made:</Label>
-                  {selectedSaleForDetails.payments.map((p, i) => (
-                     renderDetailRow(`${p.mode} (${p.paymentDate ? format(new Date(p.paymentDate), 'PPp') : 'N/A'})`, p.amount, true)
-                  ))}
-                   <Separator className="my-1" />
-                  {renderDetailRow("Total Amount Received", selectedSaleForDetails.amountReceived, true)}
-                  {selectedSaleForDetails.amountReceived < selectedSaleForDetails.totalAmount && selectedSaleForDetails.status !== 'Returned' && selectedSaleForDetails.status !== 'Cancelled' && (
-                     renderDetailRow("Balance Due", selectedSaleForDetails.totalAmount - selectedSaleForDetails.amountReceived, true)
-                  )}
-                  {selectedSaleForDetails.changeGiven > 0 && renderDetailRow("Change Given", selectedSaleForDetails.changeGiven, true)}
-                  {selectedSaleForDetails.notes && renderDetailRow("Notes", selectedSaleForDetails.notes)}
-                </CardContent>
-                 {(selectedSaleForDetails.status === 'PendingPayment' || selectedSaleForDetails.status === 'PartiallyPaid') && (
-                    <CardFooter>
-                        <Button onClick={() => handleOpenAddPaymentDialog(selectedSaleForDetails)} className="w-full">
-                            <CreditCard className="mr-2 h-4 w-4" /> Add Payment
-                        </Button>
-                    </CardFooter>
-                )}
-              </Card>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => handleReprintInvoice(selectedSaleForDetails?.id)}>
-              <Printer className="mr-2 h-4 w-4" /> Re-print Invoice
-            </Button>
-            <Button variant="secondary" onClick={() => setIsDetailsDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Return Bill Confirmation Dialog */}
       <AlertDialog open={isReturnConfirmOpen} onOpenChange={setIsReturnConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Return</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to mark this sale (ID: {saleToReturn?.id?.substring(0,8)}...) as "Returned"? 
+              Are you sure you want to mark this sale (ID: {saleToReturn?.id?.substring(0,8)}...) as "Returned"?
               This action will update the sale status and increment the stock for all items in this sale. This cannot be easily undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -371,25 +283,24 @@ export default function SalesHistoryPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Add Payment Dialog */}
       <Dialog open={isAddPaymentDialogOpen} onOpenChange={setIsAddPaymentDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-                <DialogTitle>Add Payment for Sale ID: {saleForNewPayment?.id?.substring(0,8)}...</DialogTitle>
-                <DialogDescription>
-                    Current amount due: ₹{(saleForNewPayment?.totalAmount || 0) - (saleForNewPayment?.amountReceived || 0) > 0 ? ((saleForNewPayment?.totalAmount || 0) - (saleForNewPayment?.amountReceived || 0)).toFixed(2) : '0.00'}
-                </DialogDescription>
-            </DialogHeader>
+        <AddPaymentDialogContent className="sm:max-w-md">
+            <AddPaymentDialogHeader>
+                <AddPaymentDialogTitle>Add Payment for Sale ID: {saleForNewPayment?.id?.substring(0,8)}...</AddPaymentDialogTitle>
+                <AddPaymentDialogDescription>
+                    Current amount due: ₹{((saleForNewPayment?.totalAmount || 0) - (saleForNewPayment?.amountReceived || 0) > 0 ? ((saleForNewPayment?.totalAmount || 0) - (saleForNewPayment?.amountReceived || 0)).toFixed(2) : '0.00')}
+                </AddPaymentDialogDescription>
+            </AddPaymentDialogHeader>
             <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="paymentAmount" className="text-right col-span-1">Amount</Label>
-                    <Input 
-                        id="paymentAmount" 
-                        type="number" 
+                    <Input
+                        id="paymentAmount"
+                        type="number"
                         value={newPaymentAmount}
                         onChange={(e) => setNewPaymentAmount(e.target.value)}
-                        placeholder="0.00" 
-                        className="col-span-3" 
+                        placeholder="0.00"
+                        className="col-span-3"
                     />
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
@@ -406,13 +317,13 @@ export default function SalesHistoryPage() {
                     </Select>
                 </div>
             </div>
-            <DialogFooter>
+            <AddPaymentDialogFooter>
                 <Button variant="outline" onClick={() => setIsAddPaymentDialogOpen(false)}>Cancel</Button>
                 <Button onClick={handleConfirmAddPayment} disabled={addPaymentMutation.isPending}>
                     {addPaymentMutation.isPending ? "Adding..." : "Add Payment"}
                 </Button>
-            </DialogFooter>
-        </DialogContent>
+            </AddPaymentDialogFooter>
+        </AddPaymentDialogContent>
       </Dialog>
     </div>
   );
