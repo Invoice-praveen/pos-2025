@@ -1,6 +1,7 @@
 
 'use client';
 
+import * as React from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,8 +9,26 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Search, UserCircle, ChevronDown, Printer, Save } from "lucide-react";
+import { PlusCircle, Search, UserCircle, ChevronDown, Printer, Save, ChevronsUpDown, Check } from "lucide-react";
 import type { ReactNode } from 'react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
+import { useQuery } from '@tanstack/react-query';
+import { getProducts } from '@/services/productService';
+import type { Product } from '@/types';
+
 
 // Mock Data
 const mockCartItems = [
@@ -37,6 +56,14 @@ const BillDetailRow = ({ label, value, isBold = false, isNegative = false, curre
 );
 
 export default function SalesPage() {
+  const [openCombobox, setOpenCombobox] = React.useState(false);
+  const [selectedProductForSearch, setSelectedProductForSearch] = React.useState<Product | null>(null);
+
+  const { data: products = [], isLoading: isLoadingProducts } = useQuery<Product[], Error>({
+    queryKey: ['products'],
+    queryFn: getProducts,
+  });
+
   const subTotal = mockCartItems.reduce((sum, item) => sum + item.priceUnit * item.qty, 0);
   const totalDiscount = mockCartItems.reduce((sum, item) => sum + item.discount, 0);
   const totalTax = mockCartItems.reduce((sum, item) => sum + item.taxApplied, 0);
@@ -53,11 +80,72 @@ export default function SalesPage() {
           <PlusCircle className="mr-2 h-4 w-4" /> New Bill [Ctrl+T]
         </Button>
         <div className="relative flex-grow">
-          <Input
-            placeholder="Press F1 to scan or search by item code, model no or item name"
-            className="pl-10 bg-background"
-          />
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={openCombobox}
+                className="w-full justify-between pl-10 pr-3 bg-background text-sm text-left font-normal h-9 hover:bg-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <span className="truncate text-muted-foreground hover:text-muted-foreground">
+                  {selectedProductForSearch ? selectedProductForSearch.name : "Press F1 to scan or search by item code, model no or item name"}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+              <Command>
+                <CommandInput placeholder="Search product..." />
+                <CommandList>
+                  <CommandEmpty>No product found.</CommandEmpty>
+                  <CommandGroup>
+                    {isLoadingProducts ? (
+                      <div className="p-2 text-center text-sm text-muted-foreground">Loading products...</div>
+                    ) : products.length === 0 ? (
+                       <div className="p-2 text-center text-sm text-muted-foreground">No products in inventory.</div>
+                    ) : (
+                      products.map((product) => (
+                        <CommandItem
+                          key={product.id}
+                          value={product.name}
+                          onSelect={(currentValue) => {
+                            const productSelected = products.find(p => p.name.toLowerCase() === currentValue.toLowerCase());
+                            setSelectedProductForSearch(productSelected || null);
+                            setOpenCombobox(false);
+                            if (productSelected) {
+                              console.log("Product selected for cart:", productSelected);
+                              // TODO: Add product to cart/bill logic here
+                              // Example: addProductToCart(productSelected);
+                              // For now, we can clear the selectedProductForSearch to allow immediate re-search
+                              // or set it and have another mechanism to add to cart
+                              // setSelectedProductForSearch(null); // Optional: clear after selection for new search
+                            }
+                          }}
+                          className="flex justify-between items-center"
+                        >
+                          <div className="flex items-center">
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedProductForSearch?.id === product.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <span className="truncate">{product.name}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground ml-4">
+                            <span>Stock: {product.stock}</span>
+                            <span className="ml-2">Price: ${product.price.toFixed(2)}</span>
+                          </div>
+                        </CommandItem>
+                      ))
+                    )}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
         {/* Placeholder for window controls if needed */}
       </div>
@@ -83,7 +171,7 @@ export default function SalesPage() {
               </TableHeader>
               <TableBody>
                 {mockCartItems.map((item, index) => (
-                  <TableRow key={item.id} className={index === 3 ? "bg-blue-100 dark:bg-blue-900/30" : ""}>
+                  <TableRow key={item.id} className={index === 3 ? "bg-primary/10 dark:bg-primary/20" : ""}>
                     <TableCell className="px-3 py-2 text-xs">{index + 1}</TableCell>
                     <TableCell className="px-3 py-2 text-xs">{item.itemCode}</TableCell>
                     <TableCell className="px-3 py-2 text-xs font-medium">{item.itemName}</TableCell>
@@ -191,5 +279,3 @@ export default function SalesPage() {
     </div>
   );
 }
-
-    
