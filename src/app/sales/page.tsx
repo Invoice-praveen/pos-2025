@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Search, ChevronsUpDown, Check, Trash2, Save } from "lucide-react";
+import { PlusCircle, Search, ChevronsUpDown, Check, Trash2, Save, Coins, PieChartIcon } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -24,29 +24,13 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProducts } from '@/services/productService';
-import type { Product } from '@/types';
+import { getCustomers } from '@/services/customerService';
+import { addSale } from '@/services/saleService';
+import type { Product, Customer, SalesCartItem, Sale, SaleItem, SalePayment } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-
-interface SalesCartItem {
-  productId: string;
-  itemCode: string;
-  itemName: string;
-  qty: number;
-  unit: string;
-  priceUnit: number;
-  discount: number;
-  taxApplied: number;
-  total: number;
-  stock: number;
-}
-
-const mockCustomers = [
-  { id: "cust1", name: "Anant Gopakumar", phone: "+91 911234567890" },
-  { id: "cust2", name: "John Doe", phone: "+1 5551234567" },
-  { id: "cust3", name: "Jane Smith", phone: "+44 2079460958" },
-];
+import { serverTimestamp } from 'firebase/firestore';
 
 const paymentModes = ["Cash", "UPI", "Card", "Other"];
 
@@ -61,18 +45,45 @@ const BillDetailRow = ({ label, value, isBold = false, isNegative = false, curre
 
 export default function SalesPage() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
   const [openCombobox, setOpenCombobox] = React.useState(false);
   const [selectedProductForSearch, setSelectedProductForSearch] = React.useState<Product | null>(null);
   const [searchValue, setSearchValue] = React.useState("");
 
   const [cartItems, setCartItems] = React.useState<SalesCartItem[]>([]);
   const [amountReceived, setAmountReceived] = React.useState<string>("");
-  const [selectedCustomerId, setSelectedCustomerId] = React.useState<string>(mockCustomers[0].id);
+  const [selectedCustomerId, setSelectedCustomerId] = React.useState<string>("");
+  const [selectedPaymentMode, setSelectedPaymentMode] = React.useState<string>(paymentModes[0]);
 
   const { data: products = [], isLoading: isLoadingProducts } = useQuery<Product[], Error>({
     queryKey: ['products'],
     queryFn: getProducts,
   });
+
+  const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[], Error>({
+    queryKey: ['customers'],
+    queryFn: getCustomers,
+    onSuccess: (data) => {
+      if (data && data.length > 0 && !selectedCustomerId) {
+        setSelectedCustomerId(data[0].id!);
+      }
+    }
+  });
+
+  const addSaleMutation = useMutation({
+    mutationFn: addSale,
+    onSuccess: (savedSale) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] }); // To refetch stock if it were updated
+      // queryClient.invalidateQueries({ queryKey: ['sales'] }); // For sales history page in future
+      toast({ title: "Success", description: `Sale #${savedSale.id?.substring(0,6) || 'N/A'} saved successfully.` });
+      resetBill();
+    },
+    onError: (error) => {
+      toast({ variant: "destructive", title: "Error", description: `Failed to save sale: ${error.message}` });
+    },
+  });
+
 
   const handleAddOrUpdateToCart = (product: Product) => {
     if (product.stock <= 0) {
@@ -87,7 +98,7 @@ export default function SalesPage() {
         const currentItem = updatedCartItems[existingItemIndex];
         if (currentItem.qty < product.stock) {
           currentItem.qty += 1;
-          currentItem.total = currentItem.qty * currentItem.priceUnit; // Basic total, no discount/tax yet
+          currentItem.total = currentItem.qty * currentItem.priceUnit;
         } else {
           toast({ title: "Stock Limit Reached", description: `Cannot add more ${product.name}. Available stock: ${product.stock}.`, variant: "destructive" });
         }
@@ -95,14 +106,14 @@ export default function SalesPage() {
       } else {
         const newItem: SalesCartItem = {
           productId: product.id!,
-          itemCode: product.id!.substring(0, 8).toUpperCase(), // Example item code
+          itemCode: product.id!.substring(0, 8).toUpperCase(),
           itemName: product.name,
           qty: 1,
-          unit: "-",
+          unit: product.category === "Consumables" ? "pcs" : "unit", // Example unit logic
           priceUnit: product.price,
-          discount: 0, // Placeholder
-          taxApplied: 0, // Placeholder
-          total: product.price, // Basic total
+          discount: 0,
+          taxApplied: 0,
+          total: product.price,
           stock: product.stock,
         };
         return [...prevCartItems, newItem];
@@ -114,7 +125,18 @@ export default function SalesPage() {
     setCartItems(prevCartItems => prevCartItems.filter(item => item.productId !== productId));
   };
 
-  const handleQuantityChange = (productId: string, newQty: number) => {
+  const handleQuantityChange = (productId: string, newQtyString: string) => {
+    const newQty = parseInt(newQtyString, 10);
+     if (isNaN(newQty)) { // Handle empty input or non-numeric input
+        setCartItems(prevCartItems => prevCartItems.map(item => {
+            if (item.productId === productId) {
+                return {...item, qty: 0, total: 0}; // Or keep current if preferred
+            }
+            return item;
+        }));
+        return;
+    }
+
     setCartItems(prevCartItems =>
       prevCartItems.map(item => {
         if (item.productId === productId) {
@@ -126,9 +148,8 @@ export default function SalesPage() {
               toast({ title: "Stock Limit Exceeded", description: `Only ${productDetails.stock} units of ${item.itemName} available.`, variant: "destructive"});
               return { ...item, qty: productDetails.stock, total: productDetails.stock * item.priceUnit };
             } else if (newQty <= 0) {
-              // Optionally remove item if qty is 0 or less, or just keep it at 1
-              // For now, let's prevent going below 1 via input. Removal is separate.
-              return { ...item, qty: 1, total: 1 * item.priceUnit };
+              // Allow setting to 0, to be removed if needed or kept to indicate it was in cart
+               return { ...item, qty: 0, total: 0 };
             }
           }
         }
@@ -139,14 +160,16 @@ export default function SalesPage() {
 
 
   const subTotal = cartItems.reduce((sum, item) => sum + item.priceUnit * item.qty, 0);
-  const totalDiscount = cartItems.reduce((sum, item) => sum + item.discount, 0); // Placeholder
-  const totalTax = cartItems.reduce((sum, item) => sum + item.taxApplied, 0); // Placeholder
-  const roundOff = 0.00; // Example, can be dynamic later
+  const totalDiscount = cartItems.reduce((sum, item) => sum + item.discount, 0);
+  const totalTax = cartItems.reduce((sum, item) => sum + item.taxApplied, 0);
+  const roundOff = 0.00; 
   const totalAmount = subTotal - totalDiscount + totalTax + roundOff;
-  const totalItems = cartItems.length;
+  const totalItems = cartItems.filter(item => item.qty > 0).length;
   const totalQuantity = cartItems.reduce((sum, item) => sum + item.qty, 0);
   
-  const changeToReturn = Math.max(0, parseFloat(amountReceived || "0") - totalAmount);
+  const currentAmountReceived = parseFloat(amountReceived || "0");
+  const changeToReturn = Math.max(0, currentAmountReceived - totalAmount);
+  const balanceDue = Math.max(0, totalAmount - currentAmountReceived);
 
   React.useEffect(() => {
     if (totalAmount > 0) {
@@ -156,16 +179,89 @@ export default function SalesPage() {
     }
   }, [totalAmount]);
 
+  const resetBill = () => {
+    setCartItems([]);
+    setSelectedProductForSearch(null);
+    setSearchValue("");
+    setAmountReceived("");
+    if (customers && customers.length > 0) {
+      setSelectedCustomerId(customers[0].id!);
+    } else {
+      setSelectedCustomerId("");
+    }
+    setSelectedPaymentMode(paymentModes[0]);
+  }
+
+  const handleSaveSale = () => {
+    if (cartItems.length === 0) {
+      toast({ variant: "destructive", title: "Empty Cart", description: "Cannot save an empty bill." });
+      return;
+    }
+    if (currentAmountReceived < totalAmount) {
+      toast({ variant: "destructive", title: "Insufficient Payment", description: "Amount received is less than total amount. Use Partial Pay if intended." });
+      return;
+    }
+    if (!selectedCustomerId) {
+      toast({ variant: "destructive", title: "No Customer", description: "Please select a customer." });
+      return;
+    }
+
+    const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+
+    const saleItems: SaleItem[] = cartItems.map(cartItem => ({
+      productId: cartItem.productId,
+      itemCode: cartItem.itemCode,
+      itemName: cartItem.itemName,
+      qty: cartItem.qty,
+      unit: cartItem.unit,
+      priceUnit: cartItem.priceUnit,
+      discount: cartItem.discount,
+      taxApplied: cartItem.taxApplied,
+      total: cartItem.total,
+    }));
+
+    const saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'saleDate'> = {
+      customerId: selectedCustomerId,
+      customerName: selectedCustomer?.name || "Unknown Customer",
+      items: saleItems,
+      subTotal,
+      totalDiscount,
+      totalTax,
+      roundOff,
+      totalAmount,
+      totalItems,
+      totalQuantity,
+      payments: [{ mode: selectedPaymentMode, amount: currentAmountReceived }], // For now, single payment
+      amountReceived: currentAmountReceived,
+      paymentMode: selectedPaymentMode,
+      changeGiven: changeToReturn,
+      status: 'Completed',
+      // saleDate is set by serverTimestamp in service
+    };
+    addSaleMutation.mutate(saleData);
+  };
+  
+  const handlePartialPay = () => {
+    toast({title: "Not Implemented", description: "Partial Pay functionality is not yet implemented."});
+    // TODO: Implement Partial Pay logic
+    // - Allow saving sale if amountReceived < totalAmount
+    // - Mark sale status as 'PartiallyPaid'
+    // - Store balanceDue
+  };
+
+  const handleMultiPay = () => {
+    toast({title: "Not Implemented", description: "Multi Pay functionality is not yet implemented."});
+    // TODO: Implement Multi Pay logic
+    // - UI to add multiple payment methods and amounts
+    // - Store payments as an array in the Sale object
+  };
+
 
   return (
     <div className="flex flex-col h-[calc(100vh-var(--header-height,4rem)-2rem)] bg-muted/40 p-4 gap-4">
-      {/* Top Bar */}
       <div className="flex items-center gap-4 shrink-0">
         <Button variant="outline" className="bg-background" onClick={() => {
-          setCartItems([]);
-          setSelectedProductForSearch(null);
-          setSearchValue("");
-          setAmountReceived("");
+          resetBill();
           toast({title: "New Bill Created", description: "Cart has been cleared."})
         }}>
           <PlusCircle className="mr-2 h-4 w-4" /> New Bill [Ctrl+T]
@@ -187,7 +283,7 @@ export default function SalesPage() {
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-              <Command shouldFilter={false}> {/* Manual filtering via searchValue */}
+              <Command shouldFilter={false}>
                 <CommandInput 
                   placeholder="Search product..." 
                   value={searchValue}
@@ -208,8 +304,8 @@ export default function SalesPage() {
                             const productSelected = products.find(p => p.name.toLowerCase() === currentValue.toLowerCase());
                             if (productSelected) {
                               handleAddOrUpdateToCart(productSelected);
-                              setSelectedProductForSearch(null); // Clear selection display
-                              setSearchValue(""); // Clear search input
+                              setSelectedProductForSearch(null);
+                              setSearchValue("");
                             }
                             setOpenCombobox(false);
                           }}
@@ -240,9 +336,7 @@ export default function SalesPage() {
         </div>
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
-        {/* Left Column: Bill Items Table */}
         <div className="lg:col-span-2 bg-background shadow-sm rounded-lg overflow-hidden flex flex-col">
           <div className="overflow-y-auto flex-grow">
             <Table className="min-w-full">
@@ -269,16 +363,16 @@ export default function SalesPage() {
                   </TableRow>
                 )}
                 {cartItems.map((item, index) => (
-                  <TableRow key={item.productId}>
+                  <TableRow key={item.productId} className={item.qty <= 0 ? "opacity-50" : ""}>
                     <TableCell className="px-3 py-1.5 text-xs">{index + 1}</TableCell>
                     <TableCell className="px-3 py-1.5 text-xs">{item.itemCode}</TableCell>
                     <TableCell className="px-3 py-1.5 text-xs font-medium">{item.itemName}</TableCell>
                     <TableCell className="text-right px-3 py-1.5 text-xs">
                       <Input
                         type="number"
-                        value={item.qty}
-                        onChange={(e) => handleQuantityChange(item.productId, parseInt(e.target.value, 10))}
-                        min={1}
+                        value={item.qty.toString()} // Ensure value is string for controlled input
+                        onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
+                        min={0} // Allow 0 for removal indication
                         max={item.stock}
                         className="h-7 w-16 text-xs text-right tabular-nums"
                       />
@@ -300,25 +394,26 @@ export default function SalesPage() {
           </div>
         </div>
 
-        {/* Right Column: Details & Payment */}
         <div className="lg:col-span-1 flex flex-col gap-4">
           <Card className="shadow-sm">
             <CardHeader className="pb-2 pt-4 px-4">
               <CardTitle className="text-base">Customer Details</CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4">
-              <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue placeholder="Select customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {mockCustomers.map(customer => (
-                    <SelectItem key={customer.id} value={customer.id} className="text-xs">
-                      {customer.name} ({customer.phone})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isLoadingCustomers ? <div className="text-xs text-muted-foreground">Loading customers...</div> : (
+                <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId} disabled={customers.length === 0}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Select customer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers.map(customer => (
+                      <SelectItem key={customer.id} value={customer.id!} className="text-xs">
+                        {customer.name} {customer.phone ? `(${customer.phone})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </CardContent>
           </Card>
 
@@ -343,7 +438,7 @@ export default function SalesPage() {
                 <div className="mt-2 space-y-3">
                     <div className="grid grid-cols-3 items-center gap-2">
                         <Label htmlFor="paymentMode" className="text-xs col-span-1">Payment Mode:</Label>
-                        <Select defaultValue="Cash">
+                        <Select value={selectedPaymentMode} onValueChange={setSelectedPaymentMode}>
                             <SelectTrigger id="paymentMode" className="h-9 text-xs col-span-2">
                             <SelectValue placeholder="Select mode" />
                             </SelectTrigger>
@@ -367,26 +462,42 @@ export default function SalesPage() {
                               className="h-9 pl-6 text-xs text-right" />
                         </div>
                     </div>
-                    <div className="flex justify-between items-center text-sm">
-                        <Label className="text-xs">Change to Return:</Label>
-                        <span className="font-semibold text-base">₹ {changeToReturn.toFixed(2)}</span>
-                    </div>
+                    {balanceDue > 0 && (
+                       <div className="flex justify-between items-center text-sm text-destructive">
+                        <Label className="text-xs">Balance Due:</Label>
+                        <span className="font-semibold text-base">₹ {balanceDue.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {changeToReturn > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                          <Label className="text-xs">Change to Return:</Label>
+                          <span className="font-semibold text-base">₹ {changeToReturn.toFixed(2)}</span>
+                      </div>
+                    )}
                 </div>
             </div>
             <CardFooter className="flex-col gap-2 p-3 border-t">
-              <Button size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white" disabled={cartItems.length === 0}>
-                <Save className="mr-2 h-4 w-4" /> Save & Print Bill [Ctrl+P]
+              <Button 
+                size="lg" 
+                className="w-full bg-green-600 hover:bg-green-700 text-white" 
+                onClick={handleSaveSale}
+                disabled={addSaleMutation.isPending || cartItems.length === 0 || !selectedCustomerId || currentAmountReceived < totalAmount}
+              >
+                {addSaleMutation.isPending ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save & Print Bill [Ctrl+P]</>}
               </Button>
               <div className="grid grid-cols-2 gap-2 w-full">
-                <Button variant="outline" className="text-xs h-9" disabled>Partial Pay [Ctrl+B]</Button>
-                <Button variant="outline" className="text-xs h-9" disabled>Multi Pay [Ctrl+M]</Button>
+                <Button variant="outline" className="text-xs h-9" onClick={handlePartialPay}>
+                   <PieChartIcon className="mr-2 h-3 w-3"/> Partial Pay [Ctrl+B]
+                </Button>
+                <Button variant="outline" className="text-xs h-9" onClick={handleMultiPay}>
+                   <Coins className="mr-2 h-3 w-3"/> Multi Pay [Ctrl+M]
+                </Button>
               </div>
             </CardFooter>
           </Card>
         </div>
       </div>
 
-      {/* Bottom Action Bar */}
       <div className="shrink-0 grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
         {['Change Quantity [F2]', 'Item Discount [F3]', 'Remove Item [F4]', 'Bill Tax [F7]', 'Additional Charges [F8]', 'Bill Discount [F9]', 'Loyalty Points [F10]', 'Remarks [F12]'].map(label => (
           <Button key={label} variant="outline" className="text-xs h-10 bg-background whitespace-normal text-center leading-tight justify-center" disabled>
@@ -397,4 +508,3 @@ export default function SalesPage() {
     </div>
   );
 }
-

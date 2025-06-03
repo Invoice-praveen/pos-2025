@@ -38,4 +38,42 @@ export interface Service {
   updatedAt?: Timestamp;
 }
 
-// Add other types like Sale, OrderItem etc. as needed
+export interface SaleItem {
+  productId: string;
+  itemCode: string;
+  itemName: string;
+  qty: number;
+  unit: string;
+  priceUnit: number;
+  discount: number;
+  taxApplied: number;
+  total: number;
+}
+
+export interface SalePayment {
+  mode: string;
+  amount: number;
+}
+
+export interface Sale {
+  id?: string;
+  customerId: string;
+  customerName: string; // Denormalized for easier display
+  items: SaleItem[];
+  subTotal: number;
+  totalDiscount: number;
+  totalTax: number;
+  roundOff: number;
+  totalAmount: number;
+  totalItems: number;
+  totalQuantity: number;
+  payments: SalePayment[]; // For multi-pay in future
+  amountReceived: number; // For single payment mode initially
+  paymentMode: string; // For single payment mode initially
+  changeGiven: number;
+  saleDate: Timestamp;
+  status?: 'Completed' | 'PartiallyPaid' | 'Pending'; // For future enhancements
+  notes?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
