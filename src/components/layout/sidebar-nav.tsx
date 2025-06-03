@@ -18,6 +18,7 @@ import {
   Wrench, 
   CreditCard, 
   Settings,
+  History, // Added History
   type LucideIcon
 } from 'lucide-react';
 import type { ForwardRefExoticComponent, RefAttributes } from 'react';
@@ -31,6 +32,7 @@ const iconMap: Record<IconName, LucideIcon> = {
   Wrench,
   CreditCard,
   Settings,
+  History, // Added History
 };
 
 interface SidebarNavProps {
@@ -53,7 +55,7 @@ export function SidebarNav({ items }: SidebarNavProps) {
         return (
           item.href && IconComponent && (
             <SidebarMenuItem key={index}>
-              <Link href={item.disabled ? "/" : item.href} legacyBehavior passHref>
+              <Link href={item.disabled ? "#" : item.href} legacyBehavior passHref>
                 <SidebarMenuButton
                   asChild={!item.disabled}
                   isActive={isActive}
@@ -88,3 +90,4 @@ export function SidebarNav({ items }: SidebarNavProps) {
     </SidebarMenu>
   );
 }
+

@@ -10,7 +10,8 @@ export type IconName =
   | 'Users' 
   | 'Wrench' 
   | 'CreditCard' 
-  | 'Settings';
+  | 'Settings'
+  | 'History'; // Added History icon
 
 export interface NavItem {
   title: string;
@@ -34,6 +35,11 @@ export const navItems: NavItem[] = [
     icon: 'ShoppingCart',
   },
   {
+    title: 'Sales History', // Added Sales History
+    href: '/sales-history',
+    icon: 'History',
+  },
+  {
     title: 'Inventory',
     href: '/inventory',
     icon: 'Boxes',
@@ -47,11 +53,13 @@ export const navItems: NavItem[] = [
     title: 'Services',
     href: '/services',
     icon: 'Wrench',
+    disabled: true, // Keep disabled for now as per original
   },
   {
     title: 'Payments',
     href: '/payments',
     icon: 'CreditCard',
+    disabled: true, // Keep disabled for now as per original
   },
 ];
 
@@ -63,3 +71,4 @@ export const bottomNavItems: NavItem[] = [
         disabled: true, 
     }
 ]
+
