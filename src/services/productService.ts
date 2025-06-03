@@ -10,15 +10,42 @@ import {
   orderBy,
   doc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  type Timestamp
 } from 'firebase/firestore';
 
 const productsCollectionRef = collection(db, 'products');
 
+// Helper to convert Firestore Timestamp to ISO string or return string if already
+const convertTimestampToString = (timestampField: unknown): string | undefined => {
+  if (!timestampField) return undefined;
+  if (typeof (timestampField as Timestamp).toDate === 'function') {
+    return (timestampField as Timestamp).toDate().toISOString();
+  }
+  if (typeof timestampField === 'string') {
+    return timestampField;
+  }
+  return undefined;
+};
+
+
 export async function getProducts(): Promise<Product[]> {
   const q = query(productsCollectionRef, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
+  return snapshot.docs.map(docSnapshot => {
+    const data = docSnapshot.data();
+    return { 
+      id: docSnapshot.id,
+      name: data.name,
+      category: data.category,
+      price: data.price,
+      stock: data.stock,
+      image: data.image,
+      hint: data.hint,
+      createdAt: convertTimestampToString(data.createdAt),
+      updatedAt: convertTimestampToString(data.updatedAt),
+    } as Product;
+  });
 }
 
 export async function addProduct(productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> {
@@ -27,7 +54,13 @@ export async function addProduct(productData: Omit<Product, 'id' | 'createdAt' |
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  return { ...productData, id: docRef.id, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }; // Approximate, serverTimestamp resolves on server
+  const nowISO = new Date().toISOString();
+  return { 
+    ...productData, 
+    id: docRef.id, 
+    createdAt: nowISO, // Return ISO string for client
+    updatedAt: nowISO  // Return ISO string for client
+  }; 
 }
 
 export async function updateProduct(id: string, productData: Partial<Omit<Product, 'id' | 'createdAt'>>): Promise<void> {

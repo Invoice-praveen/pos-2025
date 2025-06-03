@@ -27,16 +27,20 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
 
   const docRef = await addDoc(salesCollectionRef, {
     ...saleData,
-    saleDate: serverTimestamp(), // Use server timestamp for sale date
+    saleDate: serverTimestamp(), // Use server timestamp for actual sale date in DB
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+
+  // For the object returned to the client, use serializable date placeholders.
+  // The actual server-generated timestamps will be fetched if/when sales list is re-queried.
+  const nowISO = new Date().toISOString();
   return { 
     ...saleData, 
     id: docRef.id, 
-    saleDate: serverTimestamp() as any, // This will be resolved by the server
-    createdAt: serverTimestamp() as any, 
-    updatedAt: serverTimestamp() as any 
+    saleDate: nowISO, 
+    createdAt: nowISO, 
+    updatedAt: nowISO 
   };
 }
 

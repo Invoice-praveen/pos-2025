@@ -9,8 +9,8 @@ export interface Product {
   stock: number;
   image?: string; // URL to the image
   hint?: string; // For placeholder image generation
-  createdAt?: Timestamp; // Firestore Timestamps are fine for server-side types if not directly passed to client
-  updatedAt?: Timestamp;
+  createdAt?: string; // Changed to string
+  updatedAt?: string; // Changed to string
 }
 
 export interface Customer {
@@ -21,21 +21,21 @@ export interface Customer {
   avatar?: string; // URL to avatar
   hint?: string;
   totalSpent?: number;
-  lastPurchase?: string; // Changed to string for client-side
-  createdAt?: string;    // Changed to string for client-side
-  updatedAt?: string;    // Changed to string for client-side
+  lastPurchase?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Service {
   id?: string;
   serviceName: string;
   customer: string; // Could be customer ID or name
-  date: string | Timestamp; // Keep Timestamp for server, handle conversion for client if needed
+  date: string; 
   type: 'Paid' | 'Free' | 'Internal' | 'Warranty';
   status: 'Pending' | 'Scheduled' | 'Completed' | 'Cancelled';
   cost: number;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SaleItem {
@@ -69,13 +69,13 @@ export interface Sale {
   totalQuantity: number;
   payments: SalePayment[];
   amountReceived: number;
-  paymentMode: string;
+  paymentMode: string; // Primary payment mode if single, or summary
   changeGiven: number;
-  saleDate: Timestamp; // Will be Timestamp from Firestore
+  saleDate: string; // Changed to string
   status?: 'Completed' | 'PartiallyPaid' | 'Pending';
   notes?: string;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  createdAt?: string;    // Changed to string
+  updatedAt?: string;    // Changed to string
 }
 
 // Type for cart items, which might include temporary client-side state
