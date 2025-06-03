@@ -9,7 +9,7 @@ export interface Product {
   stock: number;
   image?: string; // URL to the image
   hint?: string; // For placeholder image generation
-  createdAt?: Timestamp;
+  createdAt?: Timestamp; // Firestore Timestamps are fine for server-side types if not directly passed to client
   updatedAt?: Timestamp;
 }
 
@@ -20,17 +20,17 @@ export interface Customer {
   phone?: string;
   avatar?: string; // URL to avatar
   hint?: string;
-  totalSpent?: number; // This might be calculated or stored
-  lastPurchase?: string | Timestamp; // Consider using Timestamp for dates
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  totalSpent?: number;
+  lastPurchase?: string; // Changed to string for client-side
+  createdAt?: string;    // Changed to string for client-side
+  updatedAt?: string;    // Changed to string for client-side
 }
 
 export interface Service {
   id?: string;
   serviceName: string;
   customer: string; // Could be customer ID or name
-  date: string | Timestamp;
+  date: string | Timestamp; // Keep Timestamp for server, handle conversion for client if needed
   type: 'Paid' | 'Free' | 'Internal' | 'Warranty';
   status: 'Pending' | 'Scheduled' | 'Completed' | 'Cancelled';
   cost: number;
@@ -67,13 +67,18 @@ export interface Sale {
   totalAmount: number;
   totalItems: number;
   totalQuantity: number;
-  payments: SalePayment[]; // For multi-pay in future
-  amountReceived: number; // For single payment mode initially
-  paymentMode: string; // For single payment mode initially
+  payments: SalePayment[];
+  amountReceived: number;
+  paymentMode: string;
   changeGiven: number;
-  saleDate: Timestamp;
-  status?: 'Completed' | 'PartiallyPaid' | 'Pending'; // For future enhancements
+  saleDate: Timestamp; // Will be Timestamp from Firestore
+  status?: 'Completed' | 'PartiallyPaid' | 'Pending';
   notes?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+}
+
+// Type for cart items, which might include temporary client-side state
+export interface SalesCartItem extends SaleItem {
+  stock: number; // To check against available stock
 }

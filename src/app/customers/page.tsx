@@ -15,7 +15,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -26,7 +25,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useForm, type SubmitHandler } from 'react-hook-form';
@@ -37,14 +35,14 @@ import { getCustomers, addCustomer, updateCustomer, deleteCustomer } from '@/ser
 import type { Customer } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format } from 'date-fns'; // For formatting dates if needed
+import { format } from 'date-fns';
 
 const customerSchema = z.object({
   name: z.string().min(1, "Customer name is required"),
   email: z.string().email("Invalid email address"),
   phone: z.string().optional(),
   avatar: z.string().url("Must be a valid URL for avatar").optional().or(z.literal('')),
-  hint: z.string().max(20, "Hint too long (max 2 words)").optional(), // Max 2 words approx
+  hint: z.string().max(20, "Hint too long (max 2 words)").optional(),
 });
 
 type CustomerFormData = z.infer<typeof customerSchema>;
@@ -137,6 +135,7 @@ export default function CustomersPage() {
 
   const handleAddNewCustomer = () => {
     setCustomerToEdit(null);
+    form.reset({ name: "", email: "", phone: "", avatar: "", hint: "" });
     setIsFormDialogOpen(true);
   };
 
@@ -348,7 +347,7 @@ export default function CustomersPage() {
                        )}
                     </TableCell>
                     <TableCell className="text-right">${(customer.totalSpent || 0).toFixed(2)}</TableCell>
-                    <TableCell>{customer.createdAt ? format(customer.createdAt.toDate(), 'PP') : 'N/A'}</TableCell>
+                    <TableCell>{customer.createdAt ? format(new Date(customer.createdAt), 'PP') : 'N/A'}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" className="mr-1" title="View Purchase History" disabled>
                         <ShoppingBag className="h-4 w-4" />
