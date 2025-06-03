@@ -53,13 +53,13 @@ export const navItems: NavItem[] = [
     title: 'Services',
     href: '/services',
     icon: 'Wrench',
-    disabled: true, // Keep disabled for now as per original
+    disabled: false, // Keep disabled for now as per original
   },
   {
     title: 'Payments',
     href: '/payments',
     icon: 'CreditCard',
-    disabled: true, // Keep disabled for now as per original
+    disabled: false, // Keep disabled for now as per original
   },
 ];
 

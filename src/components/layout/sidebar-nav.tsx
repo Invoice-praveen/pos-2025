@@ -50,7 +50,8 @@ export function SidebarNav({ items }: SidebarNavProps) {
     <SidebarMenu>
       {items.map((item, index) => {
         const IconComponent = iconMap[item.icon];
-        const isActive = item.href === "/" ? pathname === item.href : pathname.startsWith(item.href);
+        // const isActive = item.href === "/" ? pathname === item.href : pathname.startsWith(item.href);
+        const isActive = item.href === "/" ? pathname === item.href : pathname === item.href;
         
         return (
           item.href && IconComponent && (

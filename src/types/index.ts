@@ -9,8 +9,8 @@ export interface Product {
   stock: number;
   image?: string; // URL to the image
   hint?: string; // For placeholder image generation
-  createdAt?: string; // Changed to string
-  updatedAt?: string; // Changed to string
+  createdAt?: string; 
+  updatedAt?: string; 
 }
 
 export interface Customer {
@@ -71,14 +71,15 @@ export interface Sale {
   amountReceived: number;
   paymentMode: string; // Primary payment mode if single, or summary
   changeGiven: number;
-  saleDate: string; // Changed to string
-  status?: 'Completed' | 'PartiallyPaid' | 'Pending';
+  saleDate: string; 
+  status?: 'Completed' | 'PartiallyPaid' | 'Pending' | 'Returned'; // Added 'Returned'
   notes?: string;
-  createdAt?: string;    // Changed to string
-  updatedAt?: string;    // Changed to string
+  createdAt?: string;    
+  updatedAt?: string;    
 }
 
 // Type for cart items, which might include temporary client-side state
 export interface SalesCartItem extends SaleItem {
   stock: number; // To check against available stock
 }
+

@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -29,7 +30,6 @@ import { getCustomers } from '@/services/customerService';
 import { addSale } from '@/services/saleService';
 import type { Product, Customer, SalesCartItem, Sale, SaleItem } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-// import { serverTimestamp } from 'firebase/firestore'; // Already imported in saleService
 
 const paymentModes = ["Cash", "UPI", "Card", "Other"];
 
@@ -73,8 +73,8 @@ export default function SalesPage() {
   const addSaleMutation = useMutation({
     mutationFn: addSale,
     onSuccess: (savedSale) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] }); // To refetch stock if it were updated
-      // queryClient.invalidateQueries({ queryKey: ['sales'] }); // For sales history page in future
+      queryClient.invalidateQueries({ queryKey: ['products'] }); 
+      queryClient.invalidateQueries({ queryKey: ['salesHistory'] }); 
       toast({ title: "Success", description: `Sale #${savedSale.id?.substring(0,6) || 'N/A'} saved successfully.` });
       resetBill();
     },
@@ -109,7 +109,7 @@ export default function SalesPage() {
           itemCode: product.id!.substring(0, 8).toUpperCase(),
           itemName: product.name,
           qty: 1,
-          unit: product.category === "Consumables" ? "pcs" : "unit", // Example unit logic
+          unit: product.category === "Consumables" ? "pcs" : "unit", 
           priceUnit: product.price,
           discount: 0,
           taxApplied: 0,
@@ -147,7 +147,7 @@ export default function SalesPage() {
             } else if (newQty > productDetails.stock) {
               toast({ title: "Stock Limit Exceeded", description: `Only ${productDetails.stock} units of ${item.itemName} available.`, variant: "destructive"});
               return { ...item, qty: productDetails.stock, total: productDetails.stock * item.priceUnit };
-            } else { // newQty <= 0
+            } else { 
                return { ...item, qty: 0, total: 0 };
             }
           }
@@ -159,8 +159,8 @@ export default function SalesPage() {
 
 
   const subTotal = cartItems.reduce((sum, item) => sum + item.priceUnit * item.qty, 0);
-  const totalDiscount = cartItems.reduce((sum, item) => sum + item.discount, 0); // Assuming discount is per item total
-  const totalTax = cartItems.reduce((sum, item) => sum + item.taxApplied, 0); // Assuming tax is per item total
+  const totalDiscount = cartItems.reduce((sum, item) => sum + item.discount, 0); 
+  const totalTax = cartItems.reduce((sum, item) => sum + item.taxApplied, 0); 
   const roundOff = 0.00; 
   const totalAmount = subTotal - totalDiscount + totalTax + roundOff;
   const totalItems = cartItems.filter(item => item.qty > 0).length;
@@ -208,7 +208,7 @@ export default function SalesPage() {
     const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
 
     const saleItems: SaleItem[] = cartItems
-      .filter(cartItem => cartItem.qty > 0) // Only include items with quantity > 0
+      .filter(cartItem => cartItem.qty > 0) 
       .map(cartItem => ({
         productId: cartItem.productId,
         itemCode: cartItem.itemCode,
@@ -221,7 +221,7 @@ export default function SalesPage() {
         total: cartItem.total,
     }));
 
-    if (saleItems.length === 0) { // Double check after filtering
+    if (saleItems.length === 0) { 
         toast({ variant: "destructive", title: "Empty Bill", description: "Cannot save a bill with no billable items." });
         return;
     }
@@ -235,14 +235,13 @@ export default function SalesPage() {
       totalTax,
       roundOff,
       totalAmount,
-      totalItems, // This is the count of distinct product lines with qty > 0
-      totalQuantity, // This is the sum of all quantities
+      totalItems, 
+      totalQuantity, 
       payments: [{ mode: selectedPaymentMode, amount: currentAmountReceived }], 
       amountReceived: currentAmountReceived,
       paymentMode: selectedPaymentMode, 
       changeGiven: changeToReturn,
       status: 'Completed',
-      // saleDate is set by serverTimestamp in saleService
     };
     addSaleMutation.mutate(saleData);
   };
@@ -507,4 +506,3 @@ export default function SalesPage() {
     </div>
   );
 }
-

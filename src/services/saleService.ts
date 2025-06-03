@@ -13,16 +13,16 @@ import {
   query,
   orderBy,
   Timestamp,
-  increment // Changed: Import increment directly
+  increment,
+  updateDoc, // Added updateDoc
 } from 'firebase/firestore';
 
 const salesCollectionRef = collection(db, 'sales');
 const productsCollectionRef = collection(db, 'products');
 
-// Helper to convert Firestore Timestamp to ISO string or return string if already
 const convertTimestampToString = (timestampField: unknown): string | undefined => {
   if (!timestampField) return undefined;
-  if (timestampField instanceof Timestamp) { // Check if it's a Firestore Timestamp
+  if (timestampField instanceof Timestamp) { 
     return timestampField.toDate().toISOString();
   }
   if (typeof timestampField === 'string') {
@@ -39,7 +39,7 @@ const convertTimestampToString = (timestampField: unknown): string | undefined =
 export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'saleDate'>): Promise<Sale> {
   try {
     const batch = writeBatch(db);
-    const newSaleRef = doc(salesCollectionRef); // Auto-generate ID
+    const newSaleRef = doc(salesCollectionRef); 
 
     const cleanedSaleItems = saleData.items.map(item => {
       if (!item.productId || typeof item.productId !== 'string' || item.productId.trim() === '') {
@@ -100,13 +100,13 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
         console.warn(`[saleService] Skipping stock update for item "${item.itemName}" due to missing productId.`);
         continue;
       }
-      if (isNaN(item.qty) || item.qty === 0) { // Also skip if qty is not a valid number or zero
+      if (isNaN(item.qty) || item.qty === 0) { 
         console.warn(`[saleService] Skipping stock update for item "${item.itemName}" due to invalid or zero quantity: ${item.qty}.`);
         continue;
       }
       const productRef = doc(productsCollectionRef, item.productId);
       batch.update(productRef, { 
-        stock: increment(-item.qty) // Changed: Use imported increment function
+        stock: increment(-item.qty) 
       });
     }
 
@@ -180,4 +180,50 @@ export async function getSales(): Promise<Sale[]> {
     };
     return sale;
   });
+}
+
+export async function returnSale(saleId: string, itemsToReturn: SaleItem[]): Promise<void> {
+  if (!saleId || !itemsToReturn || itemsToReturn.length === 0) {
+    console.error("[saleService] returnSale: Missing saleId or itemsToReturn.");
+    throw new Error("Missing saleId or items to return.");
+  }
+
+  try {
+    const batch = writeBatch(db);
+    const saleRef = doc(salesCollectionRef, saleId);
+
+    batch.update(saleRef, {
+      status: 'Returned',
+      updatedAt: serverTimestamp(),
+    });
+
+    for (const item of itemsToReturn) {
+      if (!item.productId || typeof item.productId !== 'string' || item.productId.trim() === '') {
+        console.warn(`[saleService] returnSale: Skipping stock increment for item "${item.itemName}" due to missing productId.`);
+        continue;
+      }
+      const qtyToReturn = Number(item.qty);
+      if (isNaN(qtyToReturn) || qtyToReturn <= 0) {
+        console.warn(`[saleService] returnSale: Skipping stock increment for item "${item.itemName}" due to invalid or zero quantity: ${item.qty}.`);
+        continue;
+      }
+      const productRef = doc(productsCollectionRef, item.productId);
+      batch.update(productRef, {
+        stock: increment(qtyToReturn),
+      });
+    }
+
+    await batch.commit();
+    console.log(`[saleService] Sale ${saleId} successfully marked as Returned and stock updated.`);
+  } catch (error: any) {
+    console.error(`[saleService] Error processing return for sale ${saleId}:`, error);
+    let errorMessage = `Failed to process return for sale ${saleId}.`;
+    if (error.message) {
+      errorMessage += ` Error: ${error.message}`;
+    }
+    if (error.code) {
+      errorMessage = `Firestore error (${error.code}): ${errorMessage}`;
+    }
+    throw new Error(errorMessage);
+  }
 }
