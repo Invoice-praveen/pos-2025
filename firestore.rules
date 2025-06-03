@@ -3,36 +3,31 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny all reads and writes to all documents.
-    // This is a good security practice.
+
+    // Default deny all reads and writes
     match /{document=**} {
       allow read, write: if false;
     }
 
     // Products collection
-    // Allow any authenticated user to read and write products.
-    // You might want to refine this later based on user roles.
+    // Allow authenticated users to read and write products
     match /products/{productId} {
       allow read, write: if request.auth != null;
     }
 
-    // Customers collection (example - needs a 'userId' field on customer documents)
-    // Allow a user to read/write their own customer document.
-    // match /customers/{customerId} {
-    //   allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+    // Example for a 'customers' collection where users can only manage their own document
+    // match /customers/{userId} {
+    //   allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+    //   allow create: if request.auth != null;
     // }
 
-    // Sales collection (example)
-    // Allow any authenticated user to read/write sales.
-    // Refine based on your needs (e.g., only admins or specific users).
+    // Example for a 'sales' collection
     // match /sales/{saleId} {
-    //   allow read, write: if request.auth != null;
-    // }
-
-    // Services collection (example)
-    // Allow any authenticated user to read/write services.
-    // match /services/{serviceId} {
-    //   allow read, write: if request.auth != null;
+    //   // Allow authenticated users to create sales
+    //   allow create: if request.auth != null;
+    //   // Allow users to read sales if they are an admin (custom claim) or if they made the sale
+    //   allow read: if request.auth != null && (request.auth.token.admin == true || request.resource.data.userId == request.auth.uid);
+    //   // More granular update/delete rules would go here
     // }
   }
 }
