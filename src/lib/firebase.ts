@@ -3,20 +3,31 @@ import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getAuth, type Auth } from "firebase/auth";
 
-// Explicitly check for environment variables
-const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-const messagingSenderId = process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID;
-const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID;
+// --- IMPORTANT ---
+// The configuration below attempts to use environment variables.
+// If they are not found, it falls back to TEMPORARY PLACEHOLDERS.
+// You MUST create a .env.local file in the root of your project
+// and add your actual Firebase project credentials for the app to work.
+//
+// Example .env.local content:
+// NEXT_PUBLIC_FIREBASE_API_KEY=your_actual_api_key
+// NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_actual_messaging_sender_id
+// NEXT_PUBLIC_FIREBASE_APP_ID=your_actual_app_id
+//
+// If placeholders are used, Firebase initialization will likely fail with
+// an "auth/invalid-api-key" or similar error.
+// --- IMPORTANT ---
 
-if (!apiKey || !messagingSenderId || !appId) {
-  const missingVars = [];
-  if (!apiKey) missingVars.push("NEXT_PUBLIC_FIREBASE_API_KEY");
-  if (!messagingSenderId) missingVars.push("NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID");
-  if (!appId) missingVars.push("NEXT_PUBLIC_FIREBASE_APP_ID");
-  
-  throw new Error(
-    `Firebase configuration error: The following environment variables are missing or not configured: ${missingVars.join(', ')}. ` +
-    "Please ensure they are set in your .env.local file and that you have RESTARTED your development server."
+const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "YOUR_API_KEY_PLACEHOLDER";
+const messagingSenderId = process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "YOUR_MESSAGING_SENDER_ID_PLACEHOLDER";
+const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "YOUR_APP_ID_PLACEHOLDER";
+
+if (apiKey === "YOUR_API_KEY_PLACEHOLDER" || messagingSenderId === "YOUR_MESSAGING_SENDER_ID_PLACEHOLDER" || appId === "YOUR_APP_ID_PLACEHOLDER") {
+  console.warn(
+    "WARNING: Firebase is using placeholder credentials because environment variables " +
+    "(NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID, NEXT_PUBLIC_FIREBASE_APP_ID) " +
+    "were not found. Please set these in your .env.local file and RESTART your development server " +
+    "for Firebase to work correctly."
   );
 }
 
