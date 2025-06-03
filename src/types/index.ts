@@ -20,7 +20,7 @@ export interface Customer {
   phone?: string;
   avatar?: string; // URL to avatar
   hint?: string;
-  totalSpent?: number;
+  totalSpent?: number; // This might be calculated or stored
   lastPurchase?: string | Timestamp; // Consider using Timestamp for dates
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
