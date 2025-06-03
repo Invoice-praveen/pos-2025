@@ -62,7 +62,7 @@ export default function SalesPage() {
 
   React.useEffect(() => {
     if (products && products.length > 0) {
-      console.log("[SalesPage] Products data from useQuery:", JSON.stringify(products, null, 2));
+      // console.log("[SalesPage] Products data from useQuery:", JSON.stringify(products, null, 2));
     } else if (products && products.length === 0 && !isLoadingProducts) {
         console.log("[SalesPage] Products data from useQuery is an empty array and not loading.");
     }
@@ -98,6 +98,13 @@ export default function SalesPage() {
     },
   });
 
+  const calculateItemFields = (item: SalesCartItem): SalesCartItem => {
+    const itemSubtotal = item.priceUnit * item.qty;
+    // Tax is applied on the item subtotal (before item-level discount)
+    const taxApplied = itemSubtotal * (item.taxRate || 0);
+    const total = itemSubtotal - item.discount + taxApplied;
+    return { ...item, taxApplied, total };
+  };
 
   const handleAddOrUpdateToCart = (product: Product) => {
     if (product.stock <= 0) {
@@ -112,25 +119,26 @@ export default function SalesPage() {
         const currentItem = updatedCartItems[existingItemIndex];
         if (currentItem.qty < product.stock) {
           currentItem.qty += 1;
-          currentItem.total = currentItem.qty * currentItem.priceUnit;
+          updatedCartItems[existingItemIndex] = calculateItemFields(currentItem);
         } else {
           toast({ title: "Stock Limit Reached", description: `Cannot add more ${product.name}. Available stock: ${product.stock}.`, variant: "destructive" });
         }
         return updatedCartItems;
       } else {
         if (product.id) {
-            const newItem: SalesCartItem = {
-            productId: product.id,
-            itemCode: product.id.substring(0, 8).toUpperCase(),
-            itemName: product.name,
-            qty: 1,
-            unit: product.category === "Consumables" ? "pcs" : "unit", 
-            priceUnit: product.price,
-            discount: 0,
-            taxApplied: 0,
-            total: product.price,
-            stock: product.stock,
+            const newItemBase: Omit<SalesCartItem, 'taxApplied' | 'total'> = {
+              productId: product.id,
+              itemCode: product.sku || product.id.substring(0, 8).toUpperCase(),
+              itemName: product.name,
+              description: product.description,
+              qty: 1,
+              unit: product.category === "Consumables" ? "pcs" : "unit", 
+              priceUnit: product.price,
+              taxRate: product.taxRate || 0,
+              discount: 0, // Initial discount is 0
+              stock: product.stock,
             };
+            const newItem = calculateItemFields(newItemBase as SalesCartItem); // Calculate tax and total
             return [...prevCartItems, newItem];
         }
         toast({variant: "destructive", title: "Error", description: "Product ID is missing."})
@@ -143,44 +151,48 @@ export default function SalesPage() {
     setCartItems(prevCartItems => prevCartItems.filter(item => item.productId !== productId));
   };
 
-  const handleQuantityChange = (productId: string, newQtyString: string) => {
-    const newQty = parseInt(newQtyString, 10);
-     if (isNaN(newQty)) { 
-        setCartItems(prevCartItems => prevCartItems.map(item => {
-            if (item.productId === productId) {
-                return {...item, qty: 0, total: 0}; 
-            }
-            return item;
-        }));
-        return;
-    }
-
+  const handleCartItemChange = (productId: string, field: keyof SalesCartItem, value: string | number) => {
     setCartItems(prevCartItems =>
       prevCartItems.map(item => {
         if (item.productId === productId) {
-          const productDetails = products.find(p => p.id === productId);
-          if (productDetails) {
-            if (newQty > 0 && newQty <= productDetails.stock) {
-              return { ...item, qty: newQty, total: newQty * item.priceUnit };
-            } else if (newQty > productDetails.stock) {
-              toast({ title: "Stock Limit Exceeded", description: `Only ${productDetails.stock} units of ${item.itemName} available.`, variant: "destructive"});
-              return { ...item, qty: productDetails.stock, total: productDetails.stock * item.priceUnit };
-            } else { 
-               return { ...item, qty: 0, total: 0 };
+          let newQty = item.qty;
+          let newDiscount = item.discount;
+
+          if (field === 'qty') {
+            newQty = parseInt(value as string, 10);
+            if (isNaN(newQty)) newQty = 0;
+            const productDetails = products.find(p => p.id === productId);
+            if (productDetails) {
+              if (newQty > productDetails.stock) {
+                toast({ title: "Stock Limit Exceeded", description: `Only ${productDetails.stock} units of ${item.itemName} available.`, variant: "destructive"});
+                newQty = productDetails.stock;
+              } else if (newQty < 0) {
+                newQty = 0;
+              }
+            }
+          } else if (field === 'discount') {
+            newDiscount = parseFloat(value as string);
+            if (isNaN(newDiscount) || newDiscount < 0) newDiscount = 0;
+            // Prevent discount from exceeding item subtotal (price*qty)
+            if (newDiscount > item.priceUnit * newQty) {
+              newDiscount = item.priceUnit * newQty;
+              toast({title: "Discount Limit", description: "Discount cannot exceed item subtotal.", variant: "outline"});
             }
           }
+          
+          const updatedItem = { ...item, qty: newQty, discount: newDiscount };
+          return calculateItemFields(updatedItem);
         }
         return item;
       })
     );
   };
 
-
   const subTotal = cartItems.reduce((sum, item) => sum + item.priceUnit * item.qty, 0);
-  const totalDiscount = cartItems.reduce((sum, item) => sum + item.discount, 0); 
+  const totalItemDiscount = cartItems.reduce((sum, item) => sum + item.discount, 0); 
   const totalTax = cartItems.reduce((sum, item) => sum + item.taxApplied, 0); 
   const roundOff = 0.00; 
-  const totalAmount = subTotal - totalDiscount + totalTax + roundOff;
+  const totalAmount = subTotal - totalItemDiscount + totalTax + roundOff;
   const totalItems = cartItems.filter(item => item.qty > 0).length;
   const totalQuantity = cartItems.reduce((sum, item) => sum + item.qty, 0);
   
@@ -209,7 +221,7 @@ export default function SalesPage() {
     setSelectedPaymentMode(paymentModes[0]);
   }
 
-  const handleSaveSale = () => {
+  const handleSaveSale = (isPartialPay = false) => {
     if (totalItems === 0) {
       toast({ variant: "destructive", title: "Empty Bill", description: "Cannot save a bill with no billable items." });
       return;
@@ -218,6 +230,15 @@ export default function SalesPage() {
       toast({ variant: "destructive", title: "No Customer", description: "Please select a customer." });
       return;
     }
+    if (isPartialPay && currentAmountReceived <=0) {
+        toast({ variant: "destructive", title: "No Payment", description: "Enter amount received for partial payment." });
+        return;
+    }
+    if (isPartialPay && currentAmountReceived >= totalAmount) {
+        toast({ variant: "outline", title: "Full Payment", description: "Amount received covers total. Use 'Save & Print' for full payment." });
+        return;
+    }
+
 
     const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
 
@@ -225,13 +246,15 @@ export default function SalesPage() {
       .filter(cartItem => cartItem.qty > 0) 
       .map(cartItem => ({
         productId: cartItem.productId,
-        itemCode: cartItem.itemCode,
+        itemCode: cartItem.itemCode, // SKU
         itemName: cartItem.itemName,
+        description: cartItem.description,
         qty: cartItem.qty,
         unit: cartItem.unit,
         priceUnit: cartItem.priceUnit,
-        discount: cartItem.discount,
+        taxRate: cartItem.taxRate,
         taxApplied: cartItem.taxApplied,
+        discount: cartItem.discount,
         total: cartItem.total,
     }));
 
@@ -245,7 +268,7 @@ export default function SalesPage() {
       customerName: selectedCustomer?.name || "Unknown Customer",
       items: saleItems,
       subTotal,
-      totalDiscount,
+      totalItemDiscount,
       totalTax,
       roundOff,
       totalAmount,
@@ -259,24 +282,16 @@ export default function SalesPage() {
     addSaleMutation.mutate(saleData);
   };
   
+  const handleFullPay = () => {
+    if (currentAmountReceived < totalAmount && totalAmount > 0) {
+      toast({ variant: "destructive", title: "Insufficient Payment", description: "Amount received is less than total amount." });
+      return;
+    }
+    handleSaveSale(false);
+  };
+
   const handlePartialPay = () => {
-     if (totalItems === 0) {
-      toast({ variant: "destructive", title: "Empty Bill", description: "Add items to the bill first." });
-      return;
-    }
-    if (!selectedCustomerId) {
-      toast({ variant: "destructive", title: "No Customer", description: "Please select a customer." });
-      return;
-    }
-     if (currentAmountReceived <= 0) {
-      toast({ variant: "destructive", title: "No Payment Received", description: "Enter amount received for partial payment." });
-      return;
-    }
-     if (currentAmountReceived >= totalAmount) {
-      toast({ variant: "outline", title: "Full Payment", description: "Amount received covers total. Use 'Save & Print' for full payment." });
-      return;
-    }
-    handleSaveSale(); 
+     handleSaveSale(true); 
   };
 
   const handleMultiPay = () => {
@@ -321,14 +336,20 @@ export default function SalesPage() {
                   <CommandGroup>
                     {isLoadingProducts ? (
                       <div className="p-2 text-center text-sm text-muted-foreground">Loading products...</div>
-                    ) : products.filter(p => p.name && p.name.toLowerCase().includes(searchValue.toLowerCase())).length === 0 && searchValue ? (
+                    ) : products.filter(p => 
+                        (p.name && p.name.toLowerCase().includes(searchValue.toLowerCase())) ||
+                        (p.sku && p.sku.toLowerCase().includes(searchValue.toLowerCase()))
+                      ).length === 0 && searchValue ? (
                        <div className="p-2 text-center text-sm text-muted-foreground">No products match "{searchValue}".</div>
-                    ) : products.filter(p => p.name && p.name.toLowerCase().includes(searchValue.toLowerCase())).map((product) => (
+                    ) : products.filter(p => 
+                        (p.name && p.name.toLowerCase().includes(searchValue.toLowerCase())) ||
+                        (p.sku && p.sku.toLowerCase().includes(searchValue.toLowerCase()))
+                      ).map((product) => (
                         <CommandItem
                           key={product.id}
-                          value={product.name}
-                          onSelect={(currentValue) => {
-                            const productSelected = products.find(p => p.name && p.name.toLowerCase() === currentValue.toLowerCase());
+                          value={product.name} // CMDK uses this for its internal filtering/value
+                          onSelect={(currentValue) => { // currentValue here is product.name
+                            const productSelected = products.find(p => p.name.toLowerCase() === currentValue.toLowerCase());
                             if (productSelected) {
                               handleAddOrUpdateToCart(productSelected);
                               setSelectedProductForSearch(null);
@@ -336,21 +357,26 @@ export default function SalesPage() {
                             }
                             setOpenCombobox(false);
                           }}
-                          className="flex justify-between items-center"
+                          className="flex justify-between items-start text-xs p-2"
                           disabled={product.stock <=0}
                         >
                           <div className="flex items-center">
                             <Check
                               className={cn(
-                                "mr-2 h-4 w-4",
+                                "mr-2 h-3 w-3",
                                 selectedProductForSearch?.id === product.id ? "opacity-100" : "opacity-0"
                               )}
                             />
-                            <span className="truncate">{product.name}</span>
+                            <div>
+                                <div className="font-medium">{product.name}</div>
+                                {product.sku && <div className="text-muted-foreground text-xs">SKU: {product.sku}</div>}
+                                {product.description && <div className="text-muted-foreground text-xs truncate max-w-[200px]">{product.description}</div>}
+                            </div>
                           </div>
-                          <div className="text-xs text-muted-foreground ml-4">
+                          <div className="text-xs text-muted-foreground ml-2 text-right shrink-0">
                             {product.stock <= 0 ? <span className="text-destructive">Out of stock</span> : <span>Stock: {product.stock}</span>}
-                            <span className="ml-2">Price: ₹{product.price?.toFixed(2)}</span>
+                            <br/>
+                            <span>Price: ₹{product.price?.toFixed(2)}</span>
                           </div>
                         </CommandItem>
                       ))
@@ -369,16 +395,16 @@ export default function SalesPage() {
             <Table className="min-w-full">
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  <TableHead className="w-[50px] px-3 py-2 text-xs">#</TableHead>
-                  <TableHead className="px-3 py-2 text-xs">ITEM CODE</TableHead>
-                  <TableHead className="px-3 py-2 text-xs">ITEM NAME</TableHead>
-                  <TableHead className="text-right px-3 py-2 text-xs w-[80px]">QTY</TableHead>
-                  <TableHead className="text-center px-3 py-2 text-xs">UNIT</TableHead>
-                  <TableHead className="text-right px-3 py-2 text-xs">PRICE/UNIT(₹)</TableHead>
-                  <TableHead className="text-right px-3 py-2 text-xs">DISC(₹)</TableHead>
-                  <TableHead className="text-right px-3 py-2 text-xs">TAX(₹)</TableHead>
-                  <TableHead className="text-right px-3 py-2 text-xs">TOTAL(₹)</TableHead>
-                  <TableHead className="text-right px-3 py-2 text-xs w-[50px]">DEL</TableHead>
+                  <TableHead className="w-[30px] px-2 py-2 text-xs">#</TableHead>
+                  <TableHead className="px-2 py-2 text-xs w-[100px]">ITEM CODE</TableHead>
+                  <TableHead className="px-2 py-2 text-xs min-w-[200px]">ITEM NAME / DESC</TableHead>
+                  <TableHead className="text-right px-2 py-2 text-xs w-[70px]">QTY</TableHead>
+                  <TableHead className="text-center px-2 py-2 text-xs w-[50px]">UNIT</TableHead>
+                  <TableHead className="text-right px-2 py-2 text-xs w-[90px]">PRICE/UNIT</TableHead>
+                  <TableHead className="text-right px-2 py-2 text-xs w-[80px]">DISC(₹)</TableHead>
+                  <TableHead className="text-right px-2 py-2 text-xs w-[80px]">TAX(₹)</TableHead>
+                  <TableHead className="text-right px-2 py-2 text-xs w-[100px]">TOTAL(₹)</TableHead>
+                  <TableHead className="text-right px-1 py-2 text-xs w-[40px]">DEL</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -390,26 +416,38 @@ export default function SalesPage() {
                   </TableRow>
                 )}
                 {cartItems.map((item, index) => (
-                  <TableRow key={item.productId} className={item.qty <= 0 ? "opacity-50" : ""}>
-                    <TableCell className="px-3 py-1.5 text-xs">{index + 1}</TableCell>
-                    <TableCell className="px-3 py-1.5 text-xs">{item.itemCode}</TableCell>
-                    <TableCell className="px-3 py-1.5 text-xs font-medium">{item.itemName}</TableCell>
-                    <TableCell className="text-right px-3 py-1.5 text-xs">
+                  <TableRow key={item.productId} className={item.qty <= 0 ? "opacity-60" : ""}>
+                    <TableCell className="px-2 py-1 text-xs">{index + 1}</TableCell>
+                    <TableCell className="px-2 py-1 text-xs">{item.itemCode}</TableCell>
+                    <TableCell className="px-2 py-1 text-xs">
+                        <div className="font-medium">{item.itemName}</div>
+                        {item.description && <div className="text-xs text-muted-foreground truncate max-w-[250px]">{item.description}</div>}
+                    </TableCell>
+                    <TableCell className="text-right px-2 py-1 text-xs">
                       <Input
                         type="number"
                         value={item.qty.toString()}
-                        onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
+                        onChange={(e) => handleCartItemChange(item.productId, 'qty', e.target.value)}
                         min={0} 
                         max={item.stock}
-                        className="h-7 w-16 text-xs text-right tabular-nums"
+                        className="h-7 w-16 text-xs text-right tabular-nums px-1"
                       />
                     </TableCell>
-                    <TableCell className="text-center px-3 py-1.5 text-xs">{item.unit}</TableCell>
-                    <TableCell className="text-right px-3 py-1.5 text-xs">{item.priceUnit.toFixed(2)}</TableCell>
-                    <TableCell className="text-right px-3 py-1.5 text-xs">{item.discount.toFixed(2)}</TableCell>
-                    <TableCell className="text-right px-3 py-1.5 text-xs">{item.taxApplied.toFixed(2)}</TableCell>
-                    <TableCell className="text-right px-3 py-1.5 text-xs font-semibold">{item.total.toFixed(2)}</TableCell>
-                    <TableCell className="text-right px-1 py-1.5">
+                    <TableCell className="text-center px-2 py-1 text-xs">{item.unit}</TableCell>
+                    <TableCell className="text-right px-2 py-1 text-xs">{item.priceUnit.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-2 py-1 text-xs">
+                       <Input
+                        type="number"
+                        value={item.discount.toString()}
+                        onChange={(e) => handleCartItemChange(item.productId, 'discount', e.target.value)}
+                        min={0}
+                        step="0.01"
+                        className="h-7 w-16 text-xs text-right tabular-nums px-1"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right px-2 py-1 text-xs">{item.taxApplied.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-2 py-1 text-xs font-semibold">{item.total.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-1 py-1">
                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleRemoveFromCart(item.productId)}>
                           <Trash2 className="h-3.5 w-3.5" />
                        </Button>
@@ -451,8 +489,8 @@ export default function SalesPage() {
             </CardHeader>
             <CardContent className="space-y-1.5 px-4 flex-grow">
               <BillDetailRow label="Sub Total:" value={subTotal} />
-              <BillDetailRow label="Item Discount:" value={totalDiscount} isNegative />
-              <BillDetailRow label="Item Tax:" value={totalTax} />
+              <BillDetailRow label="Item Discounts:" value={totalItemDiscount} isNegative />
+              <BillDetailRow label="Total Tax:" value={totalTax} />
               <BillDetailRow label="Round Off:" value={Math.abs(roundOff)} isNegative={roundOff < 0} />
               <Separator className="my-2" />
               <div className="flex justify-between items-center text-lg font-bold text-primary mt-2">
@@ -508,7 +546,7 @@ export default function SalesPage() {
               <Button 
                 size="lg" 
                 className="w-full bg-green-600 hover:bg-green-700 text-white" 
-                onClick={handleSaveSale}
+                onClick={handleFullPay}
                 disabled={addSaleMutation.isPending || totalItems === 0 || !selectedCustomerId}
               >
                 {addSaleMutation.isPending ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save &amp; Print Bill [Ctrl+P]</>}
@@ -536,4 +574,3 @@ export default function SalesPage() {
     </div>
   );
 }
-

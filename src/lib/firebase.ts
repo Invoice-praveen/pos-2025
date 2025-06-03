@@ -29,13 +29,16 @@ if (missingVars.length > 0) {
 }
 
 const firebaseConfig = {
-  apiKey: apiKey || "PLACEHOLDER_API_KEY",
-  authDomain: authDomain || "PLACEHOLDER_AUTH_DOMAIN",
-  projectId: projectId || "PLACEHOLDER_PROJECT_ID",
-  storageBucket: storageBucket || "PLACEHOLDER_STORAGE_BUCKET",
-  messagingSenderId: messagingSenderId || "PLACEHOLDER_MESSAGING_SENDER_ID",
-  appId: appId || "PLACEHOLDER_APP_ID",
+  apiKey: "AIzaSyBPwKRkzy3DtQBQPAk0h8jSdDWsdwls_Ug",
+  authDomain: "todoapp-12c66.firebaseapp.com",
+  databaseURL: "https://todoapp-12c66.firebaseio.com",
+  projectId: "todoapp-12c66",
+  storageBucket: "todoapp-12c66.firebasestorage.app",
+  messagingSenderId: "174300667087",
+  appId: "1:174300667087:web:b6925a4793e94bd6506bba",
+  measurementId: "G-6GHEGV9MZF"
 };
+
 
 
 let app: FirebaseApp;

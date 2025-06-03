@@ -13,24 +13,21 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-  Timestamp, // Ensure Timestamp is imported as a value
-  increment
+  Timestamp, 
 } from 'firebase/firestore';
 
 const productsCollectionRef = collection(db, 'products');
 const SERVICE_NAME = 'productService';
 
 // Robust timestamp conversion helper
-const convertTimestampToString = (timestampField: unknown, fieldName: string, docId: string): string | undefined => {
-  const context = `(Field: ${fieldName}, Doc: ${docId})`;
+const convertTimestampToString = (timestampField: unknown, fieldName?: string, docId?: string): string | undefined => {
+  const context = fieldName && docId ? ` (Field: ${fieldName}, Doc: ${docId})` : (fieldName ? ` (Field: ${fieldName})` : '');
   
   if (timestampField === null || typeof timestampField === 'undefined') {
-    // console.warn(`[${SERVICE_NAME}] convertTimestampToString${context}: Timestamp field is null or undefined.`);
     return undefined;
   }
 
-  // Firestore Timestamp or object with toDate method
-  if (typeof (timestampField as any)?.toDate === 'function') {
+  if (typeof (timestampField as any)?.toDate === 'function') { // Firestore Timestamp or similar
     try {
       const dateObj = (timestampField as { toDate: () => Date }).toDate();
       if (isNaN(dateObj.getTime())) {
@@ -44,8 +41,7 @@ const convertTimestampToString = (timestampField: unknown, fieldName: string, do
     }
   }
 
-  // Native JavaScript Date object
-  if (timestampField instanceof Date) {
+  if (timestampField instanceof Date) { // Native JavaScript Date
     try {
       if (isNaN(timestampField.getTime())) {
         console.warn(`[${SERVICE_NAME}] Invalid native Date object encountered${context}:`, timestampField);
@@ -58,13 +54,13 @@ const convertTimestampToString = (timestampField: unknown, fieldName: string, do
     }
   }
 
-  // String (attempt to parse as date)
-  if (typeof timestampField === 'string') {
+  if (typeof timestampField === 'string') { // Date string
     try {
       const d = new Date(timestampField);
       if (isNaN(d.getTime())) {
         // console.warn(`[${SERVICE_NAME}] Invalid date string encountered${context}:`, timestampField);
-        return undefined; // Don't treat all strings as dates, only valid ones
+        // Don't treat all strings as dates, only valid ones. If it was intended as a date, this will return undefined.
+        return undefined;
       }
       return d.toISOString();
     } catch (e) {
@@ -73,8 +69,7 @@ const convertTimestampToString = (timestampField: unknown, fieldName: string, do
     }
   }
   
-  // Number (assume milliseconds since epoch)
-  if (typeof timestampField === 'number') {
+  if (typeof timestampField === 'number') { // Numeric timestamp (ms since epoch)
     try {
       const d = new Date(timestampField);
       if (isNaN(d.getTime())) {
@@ -95,13 +90,12 @@ const convertTimestampToString = (timestampField: unknown, fieldName: string, do
 
 export async function getProducts(): Promise<Product[]> {
   console.log(`[${SERVICE_NAME}] getProducts: Attempting to fetch products.`);
-  // Ensure your products collection has a 'createdAt' field of type Firestore Timestamp for this query to work correctly.
   const q = query(productsCollectionRef, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
   const fetchedDocCount = snapshot.docs.length;
   console.log(`[${SERVICE_NAME}] getProducts: Fetched ${fetchedDocCount} product documents from Firestore.`);
 
-  if (fetchedDocCount === 0) {
+  if (fetchedDocCount === 0 && !process.env.JEST_WORKER_ID) { // Avoid spamming logs during tests
       console.warn(`[${SERVICE_NAME}] getProducts: No documents returned from Firestore. This could be due to:
       1. The 'products' collection is empty.
       2. Firestore security rules are preventing reads.
@@ -111,27 +105,27 @@ export async function getProducts(): Promise<Product[]> {
   const products = snapshot.docs.map(docSnapshot => {
     const data = docSnapshot.data();
     const docId = docSnapshot.id;
-    // Log raw data for each product
     // console.log(`[${SERVICE_NAME}] getProducts: Raw data for product ${docId}:`, JSON.stringify(data, null, 2));
     
     const createdAtStr = convertTimestampToString(data.createdAt, 'createdAt', docId);
-    if (!createdAtStr && fetchedDocCount > 0) { // Only warn if we expected docs
+    if (!createdAtStr && fetchedDocCount > 0 && !process.env.JEST_WORKER_ID) { 
         console.warn(`[${SERVICE_NAME}] getProducts: Product ${docId} has a missing or invalid 'createdAt' field, which is used for ordering. This document might have been excluded by the orderBy query if the field type was incompatible.`);
     }
-
 
     const product: Product = {
       id: docId,
       name: data.name ?? 'Unknown Product',
+      sku: data.sku ?? '',
+      description: data.description ?? '',
       category: data.category ?? 'Other',
       price: typeof data.price === 'number' ? data.price : 0,
       stock: typeof data.stock === 'number' ? data.stock : 0,
       image: data.image ?? '',
       hint: data.hint ?? '',
+      taxRate: typeof data.taxRate === 'number' ? data.taxRate : 0,
       createdAt: createdAtStr,
       updatedAt: convertTimestampToString(data.updatedAt, 'updatedAt', docId),
     };
-    // Log mapped product
     // console.log(`[${SERVICE_NAME}] getProducts: Mapped product ${docId}:`, JSON.stringify(product, null, 2));
     return product;
   });
@@ -143,15 +137,15 @@ export async function addProduct(productData: Omit<Product, 'id' | 'createdAt' |
   console.log(`[${SERVICE_NAME}] addProduct: Adding product:`, productData);
   const docRef = await addDoc(productsCollectionRef, {
     ...productData,
-    createdAt: serverTimestamp(), // Firestore will set this
-    updatedAt: serverTimestamp(), // Firestore will set this
+    createdAt: serverTimestamp(), 
+    updatedAt: serverTimestamp(), 
   });
   const nowISO = new Date().toISOString();
   const newProduct = {
     ...productData,
     id: docRef.id,
-    createdAt: nowISO, // Placeholder for immediate client use
-    updatedAt: nowISO  // Placeholder for immediate client use
+    createdAt: nowISO, 
+    updatedAt: nowISO  
   };
   console.log(`[${SERVICE_NAME}] addProduct: Product added successfully with ID ${docRef.id}. Client-side representation:`, newProduct);
   return newProduct;

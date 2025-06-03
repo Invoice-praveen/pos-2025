@@ -4,11 +4,14 @@ import type { Timestamp } from 'firebase/firestore';
 export interface Product {
   id?: string; // Optional: Firestore document ID
   name: string;
+  sku?: string; // Stock Keeping Unit
+  description?: string;
   category: string;
   price: number;
   stock: number;
   image?: string; // URL to the image
   hint?: string; // For placeholder image generation
+  taxRate?: number; // e.g., 0.05 for 5%
   createdAt?: string; 
   updatedAt?: string; 
 }
@@ -40,14 +43,16 @@ export interface Service {
 
 export interface SaleItem {
   productId: string;
-  itemCode: string;
+  itemCode: string; // SKU
   itemName: string;
+  description?: string; // Product description
   qty: number;
   unit: string;
   priceUnit: number;
-  discount: number;
-  taxApplied: number;
-  total: number;
+  taxRate?: number; // Tax rate applied to this item (copied from product)
+  taxApplied: number; // Calculated tax amount for this item
+  discount: number; // Discount amount for this item line
+  total: number; // (priceUnit * qty) - discount + taxApplied
 }
 
 export interface SalePayment {
@@ -61,11 +66,13 @@ export interface Sale {
   customerId: string;
   customerName: string; // Denormalized for easier display
   items: SaleItem[];
-  subTotal: number;
-  totalDiscount: number;
-  totalTax: number;
+  subTotal: number; // Sum of (priceUnit * qty) for all items BEFORE item discounts and taxes
+  totalItemDiscount: number; // Sum of all item-level discounts
+  totalTax: number; // Sum of all item-level taxes
+  // Removed totalDiscount (from bill level), using totalItemDiscount now
+  // Removed bill level tax, using totalTax (sum of item taxes)
   roundOff: number;
-  totalAmount: number;
+  totalAmount: number; // subTotal - totalItemDiscount + totalTax + roundOff
   totalItems: number;
   totalQuantity: number;
   payments: SalePayment[];

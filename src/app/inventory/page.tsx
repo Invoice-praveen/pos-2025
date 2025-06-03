@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PlusCircle, Edit3, Trash2, PackageSearch, Filter, AlertCircle } from "lucide-react";
 import Image from "next/image";
@@ -51,11 +52,14 @@ const productCategories = ["All Categories", "Appliances", "Brewing Gear", "Cons
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
+  sku: z.string().optional(),
+  description: z.string().optional(),
   category: z.string().min(1, "Category is required").refine(val => productCategories.slice(1).includes(val), { message: "Invalid category" }),
   price: z.coerce.number().min(0, "Price must be a positive number"),
   stock: z.coerce.number().int().min(0, "Stock must be a non-negative integer"),
-  image: z.string().url("Must be a valid URL").optional().or(z.literal('')),
+  image: z.string().url("Must be a valid URL for image").optional().or(z.literal('')),
   hint: z.string().max(20, "Hint too long (max 2 words)").optional(),
+  taxRate: z.coerce.number().min(0).max(1).optional(), // e.g., 0.05 for 5%
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -75,7 +79,7 @@ export default function InventoryPage() {
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     defaultValues: {
-      name: "", category: "", price: 0, stock: 0, image: "", hint: "",
+      name: "", sku: "", description: "", category: "", price: 0, stock: 0, image: "", hint: "", taxRate: 0,
     },
   });
 
@@ -83,14 +87,17 @@ export default function InventoryPage() {
     if (productToEdit) {
       form.reset({
         name: productToEdit.name,
+        sku: productToEdit.sku || "",
+        description: productToEdit.description || "",
         category: productToEdit.category,
         price: productToEdit.price,
         stock: productToEdit.stock,
         image: productToEdit.image || "",
         hint: productToEdit.hint || "",
+        taxRate: productToEdit.taxRate || 0,
       });
     } else {
-      form.reset({ name: "", category: "", price: 0, stock: 0, image: "", hint: "" });
+      form.reset({ name: "", sku: "", description: "", category: "", price: 0, stock: 0, image: "", hint: "", taxRate: 0 });
     }
   }, [productToEdit, form, isFormDialogOpen]);
 
@@ -102,12 +109,14 @@ export default function InventoryPage() {
 
   useEffect(() => {
     if (products) {
-      console.log("[InventoryPage] Products data from useQuery:", JSON.stringify(products, null, 2));
+      // console.log("[InventoryPage] Products data from useQuery:", JSON.stringify(products, null, 2));
+    } else if (products && products.length === 0 && !isLoading) {
+        console.log("[InventoryPage] Products data from useQuery is an empty array and not loading.");
     }
     if (error) {
       console.error("[InventoryPage] Error fetching products:", error);
     }
-  }, [products, error]);
+  }, [products, isLoading, error]);
 
   const filteredProducts = useMemo(() => {
     if (!products) {
@@ -120,7 +129,8 @@ export default function InventoryPage() {
     }
     if (searchTerm) {
       items = items.filter(product =>
-        product.name.toLowerCase().includes(searchTerm.toLowerCase())
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
     console.log(`[InventoryPage] filteredProducts: Found ${items.length} products after filtering.`);
@@ -168,10 +178,11 @@ export default function InventoryPage() {
 
 
   const onSubmit: SubmitHandler<ProductFormData> = (data) => {
+    const processedData = { ...data, taxRate: data.taxRate || 0 }; // Ensure taxRate is number
     if (productToEdit && productToEdit.id) {
-      updateProductMutation.mutate({ id: productToEdit.id, productData: data });
+      updateProductMutation.mutate({ id: productToEdit.id, productData: processedData });
     } else {
-      addProductMutation.mutate(data);
+      addProductMutation.mutate(processedData);
     }
   };
 
@@ -214,7 +225,7 @@ export default function InventoryPage() {
             setIsFormDialogOpen(isOpen);
             if (!isOpen) setProductToEdit(null);
         }}>
-          <DialogContent className="sm:max-w-[480px]">
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>{productToEdit ? "Edit Product" : "Add New Product"}</DialogTitle>
               <DialogDescription>
@@ -222,7 +233,7 @@ export default function InventoryPage() {
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
                 <FormField
                   control={form.control}
                   name="name"
@@ -236,13 +247,39 @@ export default function InventoryPage() {
                     </FormItem>
                   )}
                 />
+                 <FormField
+                  control={form.control}
+                  name="sku"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>SKU (Stock Keeping Unit)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., ESP-MCH-001" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="Detailed product description..." {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <FormField
                   control={form.control}
                   name="category"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Category</FormLabel>
-                       <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value || undefined}>
+                       <Select onValueChange={field.onChange} value={field.value || undefined}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select a category" />
@@ -266,7 +303,7 @@ export default function InventoryPage() {
                       <FormItem>
                         <FormLabel>Price (₹)</FormLabel>
                         <FormControl>
-                          <Input type="number" placeholder="0.00" {...field} />
+                          <Input type="number" placeholder="0.00" {...field} step="0.01"/>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -279,13 +316,26 @@ export default function InventoryPage() {
                       <FormItem>
                         <FormLabel>Stock Quantity</FormLabel>
                         <FormControl>
-                          <Input type="number" placeholder="0" {...field} />
+                          <Input type="number" placeholder="0" {...field} step="1"/>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
+                 <FormField
+                  control={form.control}
+                  name="taxRate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tax Rate (e.g., 0.05 for 5%)</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="0.00" {...field} step="0.001" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                  <FormField
                   control={form.control}
                   name="image"
@@ -312,7 +362,7 @@ export default function InventoryPage() {
                     </FormItem>
                   )}
                 />
-                <DialogFooter>
+                <DialogFooter className="mt-2">
                   <Button type="button" variant="outline" onClick={() => setIsFormDialogOpen(false)}>Cancel</Button>
                   <Button type="submit" disabled={addProductMutation.isPending || updateProductMutation.isPending}>
                     {(addProductMutation.isPending || updateProductMutation.isPending) ? "Saving..." : "Save Product"}
@@ -350,7 +400,7 @@ export default function InventoryPage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-between">
             <div className="relative w-full max-w-xs">
               <Input
-                placeholder="Search products by name..."
+                placeholder="Search products by name or SKU..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -397,6 +447,7 @@ export default function InventoryPage() {
                 <TableRow>
                   <TableHead className="w-[80px]">Image</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>SKU</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-center">Stock</TableHead>
@@ -420,6 +471,7 @@ export default function InventoryPage() {
                         />
                       </TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
+                      <TableCell>{product.sku || '-'}</TableCell>
                       <TableCell>{product.category}</TableCell>
                       <TableCell className="text-right">₹{product.price.toFixed(2)}</TableCell>
                       <TableCell className="text-center">{product.stock}</TableCell>
@@ -441,7 +493,7 @@ export default function InventoryPage() {
                 })}
                  {filteredProducts.length === 0 && !isLoading && (
                      <TableRow>
-                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                             {products && products.length === 0 ? "No products found. Add your first product!" : "No products match your current filter."}
                         </TableCell>
                     </TableRow>

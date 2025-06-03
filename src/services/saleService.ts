@@ -20,6 +20,7 @@ import {
 
 const salesCollectionRef = collection(db, 'sales');
 const productsCollectionRef = collection(db, 'products');
+const customersCollectionRef = collection(db, 'customers');
 const SERVICE_NAME = 'saleService';
 
 // Robust timestamp conversion helper
@@ -30,7 +31,7 @@ const convertTimestampToString = (timestampField: unknown, fieldName?: string, d
     return undefined;
   }
 
-  if (typeof (timestampField as any)?.toDate === 'function') {
+  if (typeof (timestampField as any)?.toDate === 'function') { // Firestore Timestamp or similar
     try {
       const dateObj = (timestampField as { toDate: () => Date }).toDate();
       if (isNaN(dateObj.getTime())) {
@@ -44,7 +45,7 @@ const convertTimestampToString = (timestampField: unknown, fieldName?: string, d
     }
   }
 
-  if (timestampField instanceof Date) {
+  if (timestampField instanceof Date) { // Native JavaScript Date
     try {
       if (isNaN(timestampField.getTime())) {
         console.warn(`[${SERVICE_NAME}] Invalid native Date object encountered${context}:`, timestampField);
@@ -57,21 +58,21 @@ const convertTimestampToString = (timestampField: unknown, fieldName?: string, d
     }
   }
 
-  if (typeof timestampField === 'string') {
+  if (typeof timestampField === 'string') { // Date string
     try {
       const d = new Date(timestampField);
       if (isNaN(d.getTime())) {
-        console.warn(`[${SERVICE_NAME}] Invalid date string encountered${context}:`, timestampField);
-        return undefined;
+        // console.warn(`[${SERVICE_NAME}] Invalid date string encountered${context}:`, timestampField);
+        return undefined; 
       }
       return d.toISOString();
     } catch (e) {
-      console.warn(`[${SERVICE_NAME}] Error processing string as date${context}:`, e, 'Raw value:', timestampField);
+      // console.warn(`[${SERVICE_NAME}] Error processing string as date${context}:`, e, 'Raw value:', timestampField);
       return undefined;
     }
   }
   
-  if (typeof timestampField === 'number') {
+  if (typeof timestampField === 'number') { // Numeric timestamp (ms since epoch)
     try {
       const d = new Date(timestampField);
       if (isNaN(d.getTime())) {
@@ -95,7 +96,7 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
     const batch = writeBatch(db);
     const newSaleRef = doc(salesCollectionRef); 
 
-    const cleanedSaleItems = saleData.items.map(item => {
+    const cleanedSaleItems: SaleItem[] = saleData.items.map(item => {
       if (!item.productId || typeof item.productId !== 'string' || item.productId.trim() === '') {
         if (Number(item.qty) > 0) { 
           console.error(`[${SERVICE_NAME}] addSale: Invalid or missing productId for item: ${item.itemName}`);
@@ -110,13 +111,15 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
       
       return { 
         productId: item.productId,
-        itemCode: item.itemCode || (item.productId ? item.productId.substring(0,8).toUpperCase() : 'N/A'),
+        itemCode: item.itemCode || (item.productId ? item.productId.substring(0,8).toUpperCase() : 'N/A'), // SKU
         itemName: item.itemName,
+        description: item.description || '',
         qty: qtyAsNumber,
         unit: item.unit || 'pcs',
         priceUnit: Number(item.priceUnit),
-        discount: Number(item.discount || 0),
+        taxRate: Number(item.taxRate || 0),
         taxApplied: Number(item.taxApplied || 0),
+        discount: Number(item.discount || 0),
         total: Number(item.total),
       };
     }).filter(item => item.qty > 0); 
@@ -128,14 +131,14 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
     
     let saleStatus: Sale['status'] = 'Unknown';
     if (saleData.totalAmount <= 0 && cleanedSaleItems.length === 0) {
-      saleStatus = 'Completed';
+      saleStatus = 'Completed'; // Or perhaps 'Cancelled' or 'Void' if it's an empty bill
     } else if (saleData.amountReceived >= saleData.totalAmount) {
       saleStatus = 'Completed';
     } else if (saleData.amountReceived > 0 && saleData.amountReceived < saleData.totalAmount) {
       saleStatus = 'PartiallyPaid';
     } else if (saleData.amountReceived === 0 && saleData.totalAmount > 0) {
       saleStatus = 'PendingPayment';
-    } else {
+    } else { // This case should ideally not be hit if logic above is sound
       saleStatus = 'PendingPayment'; 
     }
 
@@ -144,7 +147,7 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
         customerName: saleData.customerName,
         items: cleanedSaleItems, 
         subTotal: saleData.subTotal,
-        totalDiscount: saleData.totalDiscount,
+        totalItemDiscount: saleData.totalItemDiscount,
         totalTax: saleData.totalTax,
         roundOff: saleData.roundOff,
         totalAmount: saleData.totalAmount,
@@ -156,7 +159,7 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
           paymentDate: p.paymentDate || new Date().toISOString() 
         })),
         amountReceived: saleData.amountReceived,
-        paymentMode: saleData.paymentMode,
+        paymentMode: saleData.paymentMode, // Consider making this an array if multiple payments at creation
         changeGiven: saleData.changeGiven,
         status: saleStatus,
         notes: saleData.notes || '',
@@ -181,10 +184,10 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
       });
     }
     
-    if (saleData.customerId && saleData.totalAmount > 0) {
-        const customerRef = doc(db, 'customers', saleData.customerId);
+    if (saleData.customerId && saleData.totalAmount > 0) { // Only update customer if there's a sale value
+        const customerRef = doc(customersCollectionRef, saleData.customerId);
         batch.update(customerRef, {
-            totalSpent: increment(saleData.totalAmount),
+            totalSpent: increment(saleData.totalAmount - saleData.totalItemDiscount + saleData.totalTax), // Actual amount paid by customer for items
             lastPurchase: serverTimestamp(),
             updatedAt: serverTimestamp()
         });
@@ -195,22 +198,10 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
     const nowISO = new Date().toISOString();
     return { 
       id: newSaleRef.id,
-      customerId: saleData.customerId,
-      customerName: saleData.customerName,
-      items: cleanedSaleItems,
-      subTotal: saleData.subTotal,
-      totalDiscount: saleData.totalDiscount,
-      totalTax: saleData.totalTax,
-      roundOff: saleData.roundOff,
-      totalAmount: saleData.totalAmount,
-      totalItems: cleanedSaleItems.length,
-      totalQuantity: cleanedSaleItems.reduce((sum, item) => sum + item.qty, 0),
-      payments: saleDocumentData.payments,
-      amountReceived: saleData.amountReceived,
-      paymentMode: saleData.paymentMode,
-      changeGiven: saleData.changeGiven,
-      status: saleStatus,
-      notes: saleData.notes,
+      ...saleData, // Spread the original data
+      items: cleanedSaleItems, // Use cleaned items
+      status: saleStatus, // Use determined status
+      payments: saleDocumentData.payments, // Use processed payments
       saleDate: nowISO, 
       createdAt: nowISO, 
       updatedAt: nowISO 
@@ -244,9 +235,9 @@ export async function getSales(): Promise<Sale[]> {
       id: docSnapshot.id,
       customerId: data.customerId,
       customerName: data.customerName,
-      items: data.items as SaleItem[], 
+      items: (data.items || []).map((item: any) => ({ ...item, taxRate: item.taxRate || 0, description: item.description || '' })) as SaleItem[], 
       subTotal: data.subTotal,
-      totalDiscount: data.totalDiscount,
+      totalItemDiscount: data.totalItemDiscount || 0, // Default to 0 if undefined
       totalTax: data.totalTax,
       roundOff: data.roundOff,
       totalAmount: data.totalAmount,
@@ -286,9 +277,9 @@ export async function getSalesByCustomerId(customerId: string): Promise<Sale[]> 
       id: docSnapshot.id,
       customerId: data.customerId,
       customerName: data.customerName,
-      items: data.items as SaleItem[],
+      items: (data.items || []).map((item: any) => ({ ...item, taxRate: item.taxRate || 0, description: item.description || '' })) as SaleItem[],
       subTotal: data.subTotal,
-      totalDiscount: data.totalDiscount,
+      totalItemDiscount: data.totalItemDiscount || 0,
       totalTax: data.totalTax,
       roundOff: data.roundOff,
       totalAmount: data.totalAmount,
@@ -341,6 +332,9 @@ export async function returnSale(saleId: string, itemsToReturn: SaleItem[]): Pro
       });
     }
 
+    // Note: Reversing customer's totalSpent on return can be complex. 
+    // For now, we are not adjusting customer's totalSpent. This might need business logic decision.
+
     await batch.commit();
     console.log(`[${SERVICE_NAME}] Sale ${saleId} successfully marked as Returned and stock updated.`);
   } catch (error: any) {
@@ -375,10 +369,24 @@ export async function addPaymentToSale(
   let newStatus: Sale['status'] = 'PartiallyPaid';
   if (updatedAmountReceived >= currentTotalAmount) {
     newStatus = 'Completed';
-  } else if (updatedAmountReceived <= 0 && currentTotalAmount > 0) { // Only pending if total is > 0
+  } else if (updatedAmountReceived <= 0 && currentTotalAmount > 0) { 
     newStatus = 'PendingPayment';
-  } else if (currentTotalAmount <= 0 ) { // If total is 0 or less, it's completed
+  } else if (currentTotalAmount <= 0 ) { 
      newStatus = 'Completed';
+  }
+
+  // Update customer's totalSpent when a new payment is made
+  const saleDocSnapshot = await getDocs(query(salesCollectionRef, where("__name__", "==", saleId)));
+  if (!saleDocSnapshot.empty) {
+    const saleData = saleDocSnapshot.docs[0].data() as Sale;
+    if (saleData.customerId) {
+      const customerRef = doc(customersCollectionRef, saleData.customerId);
+      await updateDoc(customerRef, {
+        totalSpent: increment(newPayment.amount), // Increment by the new payment amount
+        lastPurchase: serverTimestamp(), // Update last purchase/payment date
+        updatedAt: serverTimestamp()
+      });
+    }
   }
 
 
