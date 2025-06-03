@@ -13,7 +13,7 @@ import {
   query,
   orderBy,
   Timestamp,
-  FieldValue
+  increment // Changed: Import increment directly
 } from 'firebase/firestore';
 
 const salesCollectionRef = collection(db, 'sales');
@@ -41,14 +41,12 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
     const batch = writeBatch(db);
     const newSaleRef = doc(salesCollectionRef); // Auto-generate ID
 
-    // Validate items before adding to batch and prepare cleaned items
     const cleanedSaleItems = saleData.items.map(item => {
       if (!item.productId || typeof item.productId !== 'string' || item.productId.trim() === '') {
-        if (Number(item.qty) > 0) { // Only critical if it's a billable item
+        if (Number(item.qty) > 0) { 
           console.error(`[saleService] addSale: Invalid or missing productId for item: ${item.itemName}`);
           throw new Error(`Product ID is missing or invalid for item "${item.itemName}". Sale cannot be processed.`);
         }
-        // If qty is 0 or invalid, it might be filtered out or handled, but productId must be valid if qty > 0
       }
       const qtyAsNumber = Number(item.qty);
       if (isNaN(qtyAsNumber)) {
@@ -56,7 +54,7 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
         throw new Error(`Quantity for item "${item.itemName}" is not a valid number. Sale cannot be processed.`);
       }
       
-      return { // Return a cleaned SaleItem structure
+      return { 
         productId: item.productId,
         itemCode: item.itemCode || (item.productId ? item.productId.substring(0,8).toUpperCase() : 'N/A'),
         itemName: item.itemName,
@@ -67,27 +65,24 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
         taxApplied: Number(item.taxApplied || 0),
         total: Number(item.total),
       };
-    }).filter(item => item.qty > 0); // Ensure only items with actual quantity are processed for the sale
+    }).filter(item => item.qty > 0); 
 
     if (cleanedSaleItems.length === 0 && saleData.totalItems > 0) {
-        // This case implies items were in cart but all had 0 qty or invalid qty after cleaning
         console.error("[saleService] addSale: No valid items with quantity > 0 to save.");
         throw new Error("No items with quantity greater than 0 to save.");
     }
     
-    // 1. Prepare the new sale document
-    // Use a new object for batch.set to avoid passing any extraneous client-side fields from saleData
     const saleDocumentData = {
         customerId: saleData.customerId,
         customerName: saleData.customerName,
-        items: cleanedSaleItems, // Use the cleaned and filtered items
+        items: cleanedSaleItems, 
         subTotal: saleData.subTotal,
         totalDiscount: saleData.totalDiscount,
         totalTax: saleData.totalTax,
         roundOff: saleData.roundOff,
         totalAmount: saleData.totalAmount,
-        totalItems: cleanedSaleItems.length, // Recalculate based on cleaned items
-        totalQuantity: cleanedSaleItems.reduce((sum, item) => sum + item.qty, 0), // Recalculate
+        totalItems: cleanedSaleItems.length, 
+        totalQuantity: cleanedSaleItems.reduce((sum, item) => sum + item.qty, 0), 
         payments: saleData.payments.map(p => ({ mode: p.mode, amount: Number(p.amount) })),
         amountReceived: saleData.amountReceived,
         paymentMode: saleData.paymentMode,
@@ -100,21 +95,24 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
     };
     batch.set(newSaleRef, saleDocumentData);
 
-    // 2. Update stock for each product sold (using cleanedSaleItems)
     for (const item of cleanedSaleItems) {
-      // productId and qty validity is already checked implicitly by being in cleanedSaleItems
+      if (!item.productId) {
+        console.warn(`[saleService] Skipping stock update for item "${item.itemName}" due to missing productId.`);
+        continue;
+      }
+      if (isNaN(item.qty) || item.qty === 0) { // Also skip if qty is not a valid number or zero
+        console.warn(`[saleService] Skipping stock update for item "${item.itemName}" due to invalid or zero quantity: ${item.qty}.`);
+        continue;
+      }
       const productRef = doc(productsCollectionRef, item.productId);
-      // FieldValue.increment requires a number
       batch.update(productRef, { 
-        stock: FieldValue.increment(-item.qty) 
+        stock: increment(-item.qty) // Changed: Use imported increment function
       });
     }
 
-    // 3. Commit the batch
     await batch.commit();
 
     const nowISO = new Date().toISOString();
-    // Return a representation of the data that was intended to be saved, plus new ID and client-side timestamps
     return { 
       id: newSaleRef.id,
       customerId: saleData.customerId,
@@ -146,11 +144,9 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
     if (error.message) {
       errorMessage = error.message;
     }
-    // Firestore specific error codes can be very helpful
     if (error.code) { 
       errorMessage = `Firestore error (${error.code}): ${errorMessage}`;
     }
-    // Re-throw the error so the client's useMutation().onError can catch it
     throw new Error(errorMessage);
   }
 }
@@ -164,7 +160,7 @@ export async function getSales(): Promise<Sale[]> {
       id: docSnapshot.id,
       customerId: data.customerId,
       customerName: data.customerName,
-      items: data.items as SaleItem[], // Assuming items are stored correctly
+      items: data.items as SaleItem[], 
       subTotal: data.subTotal,
       totalDiscount: data.totalDiscount,
       totalTax: data.totalTax,

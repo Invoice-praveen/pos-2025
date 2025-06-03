@@ -79,6 +79,7 @@ export default function SalesPage() {
       resetBill();
     },
     onError: (error) => {
+      console.log(error)
       toast({ variant: "destructive", title: "Error", description: `Failed to save sale: ${error.message}` });
     },
   });
