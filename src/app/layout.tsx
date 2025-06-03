@@ -3,6 +3,7 @@
 
 import type { Metadata } from 'next';
 import './globals.css';
+import '@/components/invoice/invoice-template.css'; // Import print CSS globally
 import { Toaster } from "@/components/ui/toaster";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarInset } from "@/components/ui/sidebar";
 import { Header } from '@/components/layout/header';

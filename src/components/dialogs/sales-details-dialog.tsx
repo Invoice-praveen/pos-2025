@@ -17,12 +17,13 @@ import { Separator } from "@/components/ui/separator";
 import { Printer, CreditCard, RotateCcw } from "lucide-react";
 import type { Sale, SalePayment } from '@/types';
 import { format } from 'date-fns';
+import { triggerPrint } from '@/lib/print-utils'; // Import the print utility
 
 interface SalesDetailsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sale: Sale | null;
-  onReprint?: (saleId: string) => void;
+  onReprint?: (saleId: string) => void; // Keep if custom logic needed, else remove
   onReturnSale?: (sale: Sale) => void;
   onAddPayment?: (sale: Sale) => void;
 }
@@ -49,7 +50,7 @@ export function SalesDetailsDialog({
   open,
   onOpenChange,
   sale,
-  onReprint,
+  onReprint, // Kept for flexibility, though triggerPrint will be used directly
   onReturnSale,
   onAddPayment,
 }: SalesDetailsDialogProps) {
@@ -57,6 +58,16 @@ export function SalesDetailsDialog({
 
   const canReturn = sale.status !== 'Returned' && sale.status !== 'Cancelled' && !!onReturnSale;
   const canAddPayment = (sale.status === 'PendingPayment' || sale.status === 'PartiallyPaid') && !!onAddPayment;
+
+  const handleReprintClick = () => {
+    if (sale) {
+      triggerPrint(sale);
+      if (onReprint && sale.id) { // If there's custom logic passed via onReprint
+        onReprint(sale.id);
+      }
+    }
+  };
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -74,7 +85,7 @@ export function SalesDetailsDialog({
             </CardHeader>
             <CardContent className="text-sm space-y-1">
               {renderDetailRow("Customer", sale.customerName)}
-              {renderDetailRow("Sale Date", format(new Date(sale.saleDate), 'PPpp'))}
+              {renderDetailRow("Sale Date", sale.saleDate ? format(new Date(sale.saleDate), 'PPpp') : 'N/A')}
               {renderDetailRow("Status", <Badge variant={getStatusVariant(sale.status)} className={
                   sale.status === 'Completed' ? 'bg-accent text-accent-foreground' :
                   sale.status === 'Returned' || sale.status === 'Cancelled' ? 'bg-destructive text-destructive-foreground' :
@@ -98,7 +109,9 @@ export function SalesDetailsDialog({
                   <div className="text-xs text-muted-foreground">
                     {item.qty} {item.unit} x ₹{item.priceUnit.toFixed(2)}
                     {item.discount > 0 && ` (Disc: ₹${item.discount.toFixed(2)})`}
+                     {item.taxRate && item.taxRate > 0 && ` (Tax: ${(item.taxRate*100).toFixed(0)}%)`}
                   </div>
+                   {item.description && <div className="text-xs text-muted-foreground mt-0.5">Desc: {item.description}</div>}
                 </div>
               ))}
             </CardContent>
@@ -110,7 +123,7 @@ export function SalesDetailsDialog({
             </CardHeader>
             <CardContent className="space-y-1">
               {renderDetailRow("Sub Total", sale.subTotal, true)}
-              {sale.totalDiscount > 0 && renderDetailRow("Total Discount", -sale.totalDiscount, true)}
+              {sale.totalItemDiscount > 0 && renderDetailRow("Total Discount", -sale.totalItemDiscount, true)}
               {sale.totalTax > 0 && renderDetailRow("Total Tax", sale.totalTax, true)}
               {sale.roundOff !== 0 && renderDetailRow("Round Off", sale.roundOff, true)}
               <Separator className="my-2" />
@@ -148,15 +161,12 @@ export function SalesDetailsDialog({
           </Card>
         </div>
         <DialogFooter>
-          {onReprint && (
-            <Button variant="outline" onClick={() => onReprint(sale.id!)}>
-              <Printer className="mr-2 h-4 w-4" /> Re-print Invoice
-            </Button>
-          )}
+          <Button variant="outline" onClick={handleReprintClick}>
+            <Printer className="mr-2 h-4 w-4" /> Re-print Invoice
+          </Button>
           <Button variant="secondary" onClick={() => onOpenChange(false)}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-

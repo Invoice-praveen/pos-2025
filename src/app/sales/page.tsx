@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Search, ChevronsUpDown, Check, Trash2, Save, Coins, PieChartIcon } from "lucide-react";
+import { PlusCircle, Search, ChevronsUpDown, Check, Trash2, Save, Coins, PieChartIcon, Printer } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -30,6 +30,8 @@ import { getCustomers } from '@/services/customerService';
 import { addSale } from '@/services/saleService';
 import type { Product, Customer, SalesCartItem, Sale, SaleItem } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { triggerPrint } from '@/lib/print-utils';
+
 
 const paymentModes = ["Cash", "UPI", "Card", "Other"];
 
@@ -64,7 +66,7 @@ export default function SalesPage() {
     if (products && products.length > 0) {
       // console.log("[SalesPage] Products data from useQuery:", JSON.stringify(products, null, 2));
     } else if (products && products.length === 0 && !isLoadingProducts) {
-        console.log("[SalesPage] Products data from useQuery is an empty array and not loading.");
+        // console.log("[SalesPage] Products data from useQuery is an empty array and not loading.");
     }
     if (productsError) {
       console.error("[SalesPage] Error fetching products:", productsError);
@@ -90,6 +92,11 @@ export default function SalesPage() {
       queryClient.invalidateQueries({ queryKey: ['salesHistory'] }); 
       queryClient.invalidateQueries({ queryKey: ['customers']}); 
       toast({ title: "Success", description: `Sale #${savedSale.id?.substring(0,6) || 'N/A'} (Status: ${savedSale.status}) saved successfully.` });
+      
+      // Trigger print after successful save
+      if (savedSale.status === 'Completed' || savedSale.status === 'PartiallyPaid' || savedSale.totalAmount === 0) {
+        triggerPrint(savedSale);
+      }
       resetBill();
     },
     onError: (error: Error) => {
@@ -130,7 +137,7 @@ export default function SalesPage() {
               productId: product.id,
               itemCode: product.sku || product.id.substring(0, 8).toUpperCase(),
               itemName: product.name,
-              description: product.description,
+              description: product.description || '',
               qty: 1,
               unit: product.category === "Consumables" ? "pcs" : "unit", 
               priceUnit: product.price,
@@ -549,7 +556,7 @@ export default function SalesPage() {
                 onClick={handleFullPay}
                 disabled={addSaleMutation.isPending || totalItems === 0 || !selectedCustomerId}
               >
-                {addSaleMutation.isPending ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save &amp; Print Bill [Ctrl+P]</>}
+                {addSaleMutation.isPending ? "Saving..." : <><Printer className="mr-2 h-4 w-4" /> Save & Print Bill [Ctrl+P]</>}
               </Button>
               <div className="grid grid-cols-2 gap-2 w-full">
                 <Button variant="outline" className="text-xs h-9" onClick={handlePartialPay} disabled={addSaleMutation.isPending || currentAmountReceived <=0 || currentAmountReceived >= totalAmount || totalItems === 0 || !selectedCustomerId}>

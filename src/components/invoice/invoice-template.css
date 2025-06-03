@@ -1,0 +1,75 @@
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .invoice-container, .invoice-container * {
+    visibility: visible;
+  }
+  .invoice-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px; /* Adjust padding for print */
+    box-shadow: none;
+    font-size: 10pt; /* Adjust font size for print */
+  }
+  
+  /* Hide elements not part of the invoice itself */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Ensure table headers repeat on each page if table breaks */
+  table thead {
+    display: table-header-group;
+  }
+  table tbody {
+    display: table-row-group;
+  }
+  table tfoot {
+    display: table-footer-group;
+  }
+  
+  /* Avoid page breaks inside table rows or specific elements */
+  tr, td, th {
+    page-break-inside: avoid !important;
+  }
+  .invoice-container h1, .invoice-container h2, .invoice-container h3 {
+    page-break-after: avoid !important;
+  }
+  .invoice-container .flex {
+    page-break-inside: avoid !important;
+  }
+
+  @page {
+    size: A4; /* Or letter, legal, etc. */
+    margin: 0.5in; /* Adjust margins as needed */
+  }
+
+  .bg-gray-800 { /* Tailwind class for dark header */
+    background-color: #2d3748 !important; /* Explicit color for print */
+    color: white !important;
+    -webkit-print-color-adjust: exact; /* Chrome, Safari, Edge */
+    print-color-adjust: exact; /* Standard */
+  }
+  .text-white {
+     color: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+   .bg-gray-50 {
+    background-color: #f9fafb !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+   .text-gray-800 { color: #2d3748 !important; }
+   .text-gray-700 { color: #4a5568 !important; }
+   .text-gray-600 { color: #718096 !important; }
+   .text-gray-500 { color: #a0aec0 !important; }
+   .border-gray-300 { border-color: #d1d5db !important; }
+   .border-gray-400 { border-color: #cbd5e0 !important; }
+   .text-red-500 { color: #ef4444 !important; }
+}
