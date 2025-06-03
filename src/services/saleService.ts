@@ -26,54 +26,133 @@ const convertTimestampToString = (timestampField: unknown): string | undefined =
     return timestampField.toDate().toISOString();
   }
   if (typeof timestampField === 'string') {
-    // Could add validation here to ensure it's a valid ISO string if necessary
     return timestampField;
   }
-  // If it's already a Date object (less likely from Firestore directly but good practice)
   if (timestampField instanceof Date) {
     return timestampField.toISOString();
   }
-  console.warn('Unexpected timestamp format:', timestampField);
+  console.warn('[saleService] Unexpected timestamp format:', timestampField);
   return undefined; 
 };
 
 
 export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'saleDate'>): Promise<Sale> {
-  const batch = writeBatch(db);
+  try {
+    const batch = writeBatch(db);
+    const newSaleRef = doc(salesCollectionRef); // Auto-generate ID
 
-  // 1. Prepare the new sale document
-  const newSaleRef = doc(salesCollectionRef); // Auto-generate ID for the new sale
-  batch.set(newSaleRef, {
-    ...saleData,
-    saleDate: serverTimestamp(),
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+    // Validate items before adding to batch and prepare cleaned items
+    const cleanedSaleItems = saleData.items.map(item => {
+      if (!item.productId || typeof item.productId !== 'string' || item.productId.trim() === '') {
+        if (Number(item.qty) > 0) { // Only critical if it's a billable item
+          console.error(`[saleService] addSale: Invalid or missing productId for item: ${item.itemName}`);
+          throw new Error(`Product ID is missing or invalid for item "${item.itemName}". Sale cannot be processed.`);
+        }
+        // If qty is 0 or invalid, it might be filtered out or handled, but productId must be valid if qty > 0
+      }
+      const qtyAsNumber = Number(item.qty);
+      if (isNaN(qtyAsNumber)) {
+        console.error(`[saleService] addSale: Invalid quantity for item: ${item.itemName} (value: ${item.qty})`);
+        throw new Error(`Quantity for item "${item.itemName}" is not a valid number. Sale cannot be processed.`);
+      }
+      
+      return { // Return a cleaned SaleItem structure
+        productId: item.productId,
+        itemCode: item.itemCode || (item.productId ? item.productId.substring(0,8).toUpperCase() : 'N/A'),
+        itemName: item.itemName,
+        qty: qtyAsNumber,
+        unit: item.unit || 'pcs',
+        priceUnit: Number(item.priceUnit),
+        discount: Number(item.discount || 0),
+        taxApplied: Number(item.taxApplied || 0),
+        total: Number(item.total),
+      };
+    }).filter(item => item.qty > 0); // Ensure only items with actual quantity are processed for the sale
 
-  // 2. Update stock for each product sold
-  saleData.items.forEach((item: SaleItem) => {
-    if (item.productId && item.qty > 0) {
+    if (cleanedSaleItems.length === 0 && saleData.totalItems > 0) {
+        // This case implies items were in cart but all had 0 qty or invalid qty after cleaning
+        console.error("[saleService] addSale: No valid items with quantity > 0 to save.");
+        throw new Error("No items with quantity greater than 0 to save.");
+    }
+    
+    // 1. Prepare the new sale document
+    // Use a new object for batch.set to avoid passing any extraneous client-side fields from saleData
+    const saleDocumentData = {
+        customerId: saleData.customerId,
+        customerName: saleData.customerName,
+        items: cleanedSaleItems, // Use the cleaned and filtered items
+        subTotal: saleData.subTotal,
+        totalDiscount: saleData.totalDiscount,
+        totalTax: saleData.totalTax,
+        roundOff: saleData.roundOff,
+        totalAmount: saleData.totalAmount,
+        totalItems: cleanedSaleItems.length, // Recalculate based on cleaned items
+        totalQuantity: cleanedSaleItems.reduce((sum, item) => sum + item.qty, 0), // Recalculate
+        payments: saleData.payments.map(p => ({ mode: p.mode, amount: Number(p.amount) })),
+        amountReceived: saleData.amountReceived,
+        paymentMode: saleData.paymentMode,
+        changeGiven: saleData.changeGiven,
+        status: saleData.status,
+        notes: saleData.notes || '',
+        saleDate: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+    };
+    batch.set(newSaleRef, saleDocumentData);
+
+    // 2. Update stock for each product sold (using cleanedSaleItems)
+    for (const item of cleanedSaleItems) {
+      // productId and qty validity is already checked implicitly by being in cleanedSaleItems
       const productRef = doc(productsCollectionRef, item.productId);
-      // Use FieldValue.increment to atomically decrement stock
-      // This is safer against race conditions than reading, calculating, and writing.
+      // FieldValue.increment requires a number
       batch.update(productRef, { 
         stock: FieldValue.increment(-item.qty) 
       });
     }
-  });
 
-  // 3. Commit the batch
-  await batch.commit();
+    // 3. Commit the batch
+    await batch.commit();
 
-  // For the object returned to the client, use serializable date placeholders.
-  const nowISO = new Date().toISOString();
-  return { 
-    ...saleData, 
-    id: newSaleRef.id, 
-    saleDate: nowISO, 
-    createdAt: nowISO, 
-    updatedAt: nowISO 
-  };
+    const nowISO = new Date().toISOString();
+    // Return a representation of the data that was intended to be saved, plus new ID and client-side timestamps
+    return { 
+      id: newSaleRef.id,
+      customerId: saleData.customerId,
+      customerName: saleData.customerName,
+      items: cleanedSaleItems,
+      subTotal: saleData.subTotal,
+      totalDiscount: saleData.totalDiscount,
+      totalTax: saleData.totalTax,
+      roundOff: saleData.roundOff,
+      totalAmount: saleData.totalAmount,
+      totalItems: cleanedSaleItems.length,
+      totalQuantity: cleanedSaleItems.reduce((sum, item) => sum + item.qty, 0),
+      payments: saleData.payments,
+      amountReceived: saleData.amountReceived,
+      paymentMode: saleData.paymentMode,
+      changeGiven: saleData.changeGiven,
+      status: saleData.status,
+      notes: saleData.notes,
+      saleDate: nowISO, 
+      createdAt: nowISO, 
+      updatedAt: nowISO 
+    };
+
+  } catch (error: any) {
+    console.error("[saleService] Error in addSale service. Attempted raw saleData:", JSON.stringify(saleData, null, 2));
+    console.error("[saleService] Full error object:", error); 
+    
+    let errorMessage = 'Unknown error occurred while saving sale.';
+    if (error.message) {
+      errorMessage = error.message;
+    }
+    // Firestore specific error codes can be very helpful
+    if (error.code) { 
+      errorMessage = `Firestore error (${error.code}): ${errorMessage}`;
+    }
+    // Re-throw the error so the client's useMutation().onError can catch it
+    throw new Error(errorMessage);
+  }
 }
 
 export async function getSales(): Promise<Sale[]> {
@@ -85,7 +164,7 @@ export async function getSales(): Promise<Sale[]> {
       id: docSnapshot.id,
       customerId: data.customerId,
       customerName: data.customerName,
-      items: data.items as SaleItem[],
+      items: data.items as SaleItem[], // Assuming items are stored correctly
       subTotal: data.subTotal,
       totalDiscount: data.totalDiscount,
       totalTax: data.totalTax,
@@ -99,7 +178,7 @@ export async function getSales(): Promise<Sale[]> {
       changeGiven: data.changeGiven,
       status: data.status,
       notes: data.notes,
-      saleDate: convertTimestampToString(data.saleDate)!, // Assuming saleDate will always exist
+      saleDate: convertTimestampToString(data.saleDate)!, 
       createdAt: convertTimestampToString(data.createdAt),
       updatedAt: convertTimestampToString(data.updatedAt),
     };
