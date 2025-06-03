@@ -1,137 +1,195 @@
 
+'use client';
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, MinusCircle, Trash2, Percent, Printer } from "lucide-react";
-import Image from "next/image";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PlusCircle, Search, UserCircle, ChevronDown, Printer, Save } from "lucide-react";
+import type { ReactNode } from 'react';
 
-const products = [
-  { id: "1", name: "Espresso Machine", price: 299.99, stock: 15, image: "https://placehold.co/100x100.png", hint: "coffee machine" },
-  { id: "2", name: "Coffee Grinder", price: 79.50, stock: 30, image: "https://placehold.co/100x100.png", hint: "coffee grinder" },
-  { id: "3", name: "Pour Over Set", price: 45.00, stock: 22, image: "https://placehold.co/100x100.png", hint: "coffee set" },
-  { id: "4", name: "Bag of Coffee Beans (1kg)", price: 22.99, stock: 100, image: "https://placehold.co/100x100.png", hint: "coffee beans" },
-  { id: "5", name: "Milk Frother", price: 25.00, stock: 50, image: "https://placehold.co/100x100.png", hint: "milk frother" },
-  { id: "6", name: "Digital Scale", price: 19.99, stock: 40, image: "https://placehold.co/100x100.png", hint: "digital scale" },
-  { id: "7", name: "Cleaning Brush", price: 8.50, stock: 75, image: "https://placehold.co/100x100.png", hint: "cleaning brush" },
-  { id: "8", name: "Tamper", price: 15.75, stock: 35, image: "https://placehold.co/100x100.png", hint: "coffee tamper" },
+// Mock Data
+const mockCartItems = [
+  { id: "1", itemCode: "38671572297", itemName: "Basmati Rice, 1Kg", qty: 1.00, unit: "-", priceUnit: 200.00, discount: 20.00, taxApplied: 0.00, total: 180.00 },
+  { id: "2", itemCode: "38645371846", itemName: "Fortune Oil, 1L", qty: 1.00, unit: "-", priceUnit: 113.00, discount: 13.56, taxApplied: 4.97, total: 104.41 },
+  { id: "3", itemCode: "3865899396", itemName: "Surf Excel Powder, 3Kg", qty: 1.00, unit: "-", priceUnit: 555.00, discount: 66.60, taxApplied: 0.00, total: 488.40 },
+  { id: "4", itemCode: "38678387182", itemName: "Maggi, 4pack", qty: 1.00, unit: "-", priceUnit: 300.00, discount: 36.00, taxApplied: 13.20, total: 277.20 },
 ];
 
-const cartItems = [
-  { productId: "1", name: "Espresso Machine", quantity: 1, price: 299.99 },
-  { productId: "4", name: "Bag of Coffee Beans (1kg)", quantity: 2, price: 22.99 },
+const mockCustomers = [
+  { id: "cust1", name: "Anant Gopakumar", phone: "+91 911234567890" },
+  { id: "cust2", name: "John Doe", phone: "+1 5551234567" },
+  { id: "cust3", name: "Jane Smith", phone: "+44 2079460958" },
 ];
+
+const paymentModes = ["Cash", "UPI", "Card", "Other"];
+
+const BillDetailRow = ({ label, value, isBold = false, isNegative = false, currency = "₹" }: { label: string, value: string | number, isBold?: boolean, isNegative?: boolean, currency?: string }) => (
+  <div className={`flex justify-between items-center text-sm ${isBold ? 'font-semibold' : ''}`}>
+    <span>{label}</span>
+    <span className={`${isNegative ? 'text-destructive' : ''} ${isBold ? 'text-base' : ''}`}>
+      {isNegative ? '-' : ''}{currency} {typeof value === 'number' ? value.toFixed(2) : value}
+    </span>
+  </div>
+);
 
 export default function SalesPage() {
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const discount = 10.00; // Example discount
-  const taxRate = 0.08; // 8% tax
-  const taxAmount = (subtotal - discount) * taxRate;
-  const total = subtotal - discount + taxAmount;
+  const subTotal = mockCartItems.reduce((sum, item) => sum + item.priceUnit * item.qty, 0);
+  const totalDiscount = mockCartItems.reduce((sum, item) => sum + item.discount, 0);
+  const totalTax = mockCartItems.reduce((sum, item) => sum + item.taxApplied, 0);
+  const roundOff = -0.01; // Example
+  const totalAmount = subTotal - totalDiscount + totalTax + roundOff;
+  const totalItems = mockCartItems.length;
+  const totalQuantity = mockCartItems.reduce((sum, item) => sum + item.qty, 0);
 
   return (
-    <div className="flex flex-col gap-6 h-[calc(100vh-theme(spacing.32))]"> {/* Adjusted height for better viewport fit */}
-      <h1 className="text-3xl font-bold font-headline shrink-0">Point of Sale</h1>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-grow min-h-0">
-        {/* Product Selection - Left/Top */}
-        <Card className="lg:col-span-2 flex flex-col">
-          <CardHeader className="shrink-0">
-            <CardTitle>Products</CardTitle>
-            <Input placeholder="Search products..." className="mt-2" />
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 p-3 flex-grow overflow-y-auto">
-            {products.map((product) => (
-              <Card key={product.id} className="flex flex-col overflow-hidden shadow-md hover:shadow-lg transition-shadow">
-                <Image 
-                  src={product.image} 
-                  alt={product.name} 
-                  width={100} 
-                  height={100} 
-                  className="object-cover w-full h-24" // Reduced image height
-                  data-ai-hint={product.hint}
-                />
-                <div className="p-2 flex flex-col flex-grow">
-                  <h3 className="text-xs font-medium leading-tight mb-1 flex-grow">{product.name}</h3>
-                  <p className="text-xs text-muted-foreground">Stock: {product.stock}</p>
-                  <p className="text-sm font-semibold mt-1">${product.price.toFixed(2)}</p>
-                </div>
-                <CardFooter className="p-2 mt-auto">
-                  <Button size="sm" className="w-full text-xs">Add to Cart</Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </CardContent>
-        </Card>
+    <div className="flex flex-col h-screen bg-muted/40 p-4 gap-4">
+      {/* Top Bar */}
+      <div className="flex items-center gap-4 shrink-0">
+        <Button variant="outline" className="bg-background">
+          <PlusCircle className="mr-2 h-4 w-4" /> New Bill [Ctrl+T]
+        </Button>
+        <div className="relative flex-grow">
+          <Input
+            placeholder="Press F1 to scan or search by item code, model no or item name"
+            className="pl-10 bg-background"
+          />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
+        {/* Placeholder for window controls if needed */}
+      </div>
 
-        {/* Cart & Summary - Right/Bottom */}
-        <Card className="flex flex-col">
-          <CardHeader className="shrink-0">
-            <CardTitle>Order Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 p-3 flex-grow overflow-y-auto">
-            <div className="max-h-60 overflow-y-auto"> {/* Max height for cart items */}
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="p-2 text-xs">Item</TableHead>
-                    <TableHead className="p-2 text-center text-xs">Qty</TableHead>
-                    <TableHead className="p-2 text-right text-xs">Price</TableHead>
-                    <TableHead className="p-2 text-right text-xs">Actions</TableHead>
+      {/* Main Content Area */}
+      <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
+        {/* Left Column: Bill Items Table */}
+        <div className="lg:col-span-2 bg-background shadow-sm rounded-lg overflow-hidden flex flex-col">
+          <div className="overflow-x-auto flex-grow">
+            <Table className="min-w-full">
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="w-[50px] px-3 py-2 text-xs">#</TableHead>
+                  <TableHead className="px-3 py-2 text-xs">ITEM CODE</TableHead>
+                  <TableHead className="px-3 py-2 text-xs">ITEM NAME</TableHead>
+                  <TableHead className="text-right px-3 py-2 text-xs">QTY</TableHead>
+                  <TableHead className="text-center px-3 py-2 text-xs">UNIT</TableHead>
+                  <TableHead className="text-right px-3 py-2 text-xs">PRICE/UNIT(₹)</TableHead>
+                  <TableHead className="text-right px-3 py-2 text-xs">DISCOUNT(₹)</TableHead>
+                  <TableHead className="text-right px-3 py-2 text-xs">TAX APPLIED(₹)</TableHead>
+                  <TableHead className="text-right px-3 py-2 text-xs">TOTAL(₹)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {mockCartItems.map((item, index) => (
+                  <TableRow key={item.id} className={index === 3 ? "bg-blue-100 dark:bg-blue-900/30" : ""}>
+                    <TableCell className="px-3 py-2 text-xs">{index + 1}</TableCell>
+                    <TableCell className="px-3 py-2 text-xs">{item.itemCode}</TableCell>
+                    <TableCell className="px-3 py-2 text-xs font-medium">{item.itemName}</TableCell>
+                    <TableCell className="text-right px-3 py-2 text-xs">{item.qty.toFixed(2)}</TableCell>
+                    <TableCell className="text-center px-3 py-2 text-xs">{item.unit}</TableCell>
+                    <TableCell className="text-right px-3 py-2 text-xs">{item.priceUnit.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-3 py-2 text-xs">{item.discount.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-3 py-2 text-xs">{item.taxApplied.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-3 py-2 text-xs font-semibold">{item.total.toFixed(2)}</TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {cartItems.map((item) => (
-                    <TableRow key={item.productId}>
-                      <TableCell className="font-medium text-xs p-2">{item.name}</TableCell>
-                      <TableCell className="text-center p-2">
-                        <div className="flex items-center justify-center gap-1">
-                          <Button variant="ghost" size="icon" className="h-5 w-5"><MinusCircle className="h-3 w-3" /></Button>
-                          <span className="text-xs">{item.quantity}</span>
-                          <Button variant="ghost" size="icon" className="h-5 w-5"><PlusCircle className="h-3 w-3" /></Button>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right text-xs p-2">${(item.price * item.quantity).toFixed(2)}</TableCell>
-                      <TableCell className="text-right p-2">
-                        <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive"><Trash2 className="h-3 w-3" /></Button>
-                      </TableCell>
-                    </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+
+        {/* Right Column: Details & Payment */}
+        <div className="lg:col-span-1 flex flex-col gap-4">
+          <Card className="shadow-sm">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-base">Customer Details</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <Select defaultValue={mockCustomers[0].id}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Select customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {mockCustomers.map(customer => (
+                    <SelectItem key={customer.id} value={customer.id} className="text-xs">
+                      {customer.name} ({customer.phone})
+                    </SelectItem>
                   ))}
-                </TableBody>
-              </Table>
-            </div>
-            <Separator />
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>${subtotal.toFixed(2)}</span>
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+
+          <Card className="flex-grow flex flex-col shadow-sm">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-base">Bill Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1.5 px-4 flex-grow">
+              <BillDetailRow label="Sub Total:" value={subTotal} />
+              <BillDetailRow label="Item Discount:" value={totalDiscount} isNegative />
+              <BillDetailRow label="Item Tax:" value={totalTax} />
+              <BillDetailRow label="Round Off:" value={Math.abs(roundOff)} isNegative={roundOff < 0} />
+              <Separator className="my-2" />
+              <div className="flex justify-between items-center text-lg font-bold text-primary mt-2">
+                <span>Total Amount <span className="text-xs font-normal text-muted-foreground">(Items: {totalItems}, Qty: {totalQuantity.toFixed(0)})</span></span>
+                <span>₹ {totalAmount.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Discount</span>
-                <span className="text-destructive">-${discount.toFixed(2)}</span>
+            </CardContent>
+            
+            <div className="px-4 py-3 border-t mt-auto">
+                <Label className="text-sm font-medium">Cash/UPI</Label>
+                <div className="mt-2 space-y-3">
+                    <div className="grid grid-cols-3 items-center gap-2">
+                        <Label htmlFor="paymentMode" className="text-xs col-span-1">Payment Mode:</Label>
+                        <Select defaultValue="Cash">
+                            <SelectTrigger id="paymentMode" className="h-9 text-xs col-span-2">
+                            <SelectValue placeholder="Select mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                            {paymentModes.map(mode => (
+                                <SelectItem key={mode} value={mode} className="text-xs">{mode}</SelectItem>
+                            ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid grid-cols-3 items-center gap-2">
+                        <Label htmlFor="amountReceived" className="text-xs col-span-1">Amount Received:</Label>
+                        <div className="relative col-span-2">
+                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">₹</span>
+                            <Input id="amountReceived" type="number" defaultValue={totalAmount.toFixed(2)} className="h-9 pl-6 text-xs text-right" />
+                        </div>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                        <Label className="text-xs">Change to Return:</Label>
+                        <span className="font-semibold text-base">₹ 0.00</span>
+                    </div>
+                </div>
+            </div>
+            <CardFooter className="flex-col gap-2 p-3 border-t">
+              <Button size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white">
+                <Save className="mr-2 h-4 w-4" /> Save & Print Bill [Ctrl+P]
+              </Button>
+              <div className="grid grid-cols-2 gap-2 w-full">
+                <Button variant="outline" className="text-xs h-9">Partial Pay [Ctrl+B]</Button>
+                <Button variant="outline" className="text-xs h-9">Multi Pay [Ctrl+M]</Button>
               </div>
-              <div className="flex justify-between">
-                <span>Tax ({(taxRate * 100).toFixed(0)}%)</span>
-                <span>${taxAmount.toFixed(2)}</span>
-              </div>
-            </div>
-            <Separator />
-            <div className="flex justify-between text-lg font-extrabold text-primary"> {/* Made Total more prominent */}
-              <span>Total</span>
-              <span>${total.toFixed(2)}</span>
-            </div>
-          </CardContent>
-          <CardFooter className="flex-col gap-2 p-3 mt-auto shrink-0">
-            <div className="flex gap-2 w-full">
-                <Button variant="outline" className="w-full text-xs"><Percent className="mr-1 h-3 w-3" /> Apply Discount</Button>
-                <Button variant="outline" className="w-full text-xs"><Printer className="mr-1 h-3 w-3" /> Print Receipt</Button>
-            </div>
-            <Button size="lg" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
-              Proceed to Payment
-            </Button>
-          </CardFooter>
-        </Card>
+            </CardFooter>
+          </Card>
+        </div>
+      </div>
+
+      {/* Bottom Action Bar */}
+      <div className="shrink-0 grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+        {['Change Quantity [F2]', 'Item Discount [F3]', 'Remove Item [F4]', 'Bill Tax [F7]', 'Additional Charges [F8]', 'Bill Discount [F9]', 'Loyalty Points [F10]', 'Remarks [F12]'].map(label => (
+          <Button key={label} variant="outline" className="text-xs h-10 bg-background whitespace-normal text-center leading-tight justify-center">
+            {label}
+          </Button>
+        ))}
       </div>
     </div>
   );
 }
+
+    
