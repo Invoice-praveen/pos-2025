@@ -13,22 +13,33 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-  type Timestamp
+  Timestamp // Changed from "type Timestamp" to value import
 } from 'firebase/firestore';
 
 const productsCollectionRef = collection(db, 'products');
 
 const convertTimestampToString = (timestampField: unknown): string | undefined => {
   if (!timestampField) return undefined;
-  if (timestampField instanceof Timestamp) { // Check if it's already a Firestore Timestamp
-    return timestampField.toDate().toISOString();
+  // Check if it's a Firestore Timestamp object
+  if (timestampField instanceof Timestamp || (typeof (timestampField as any)?.toDate === 'function')) {
+    return (timestampField as Timestamp).toDate().toISOString();
   }
-  if (typeof (timestampField as any)?.toDate === 'function') { // Check for toDate method (duck typing for server-side resolved timestamps)
-    return (timestampField as any).toDate().toISOString();
-  }
+  // If it's already a string (e.g., from a previous serialization)
   if (typeof timestampField === 'string') {
-    return timestampField;
+    try {
+      // Validate if it's a valid ISO string, then return it
+      new Date(timestampField).toISOString();
+      return timestampField;
+    } catch (e) {
+      // Not a valid date string, might be some other string field
+      console.warn('[productService] Non-date string encountered in timestamp field:', timestampField);
+      return undefined; // Or handle as an error
+    }
   }
+  if (timestampField instanceof Date) { // Handle native JS Date objects
+    return timestampField.toISOString();
+  }
+  console.warn('[productService] Unexpected timestamp format:', timestampField);
   return undefined;
 };
 
@@ -48,7 +59,7 @@ export async function getProducts(): Promise<Product[]> {
       hint: data.hint,
       createdAt: convertTimestampToString(data.createdAt),
       updatedAt: convertTimestampToString(data.updatedAt),
-    } as Product;
+    } as Product; // Cast as Product, ensure all fields align
   });
 }
 
@@ -59,11 +70,12 @@ export async function addProduct(productData: Omit<Product, 'id' | 'createdAt' |
     updatedAt: serverTimestamp(),
   });
   const nowISO = new Date().toISOString();
+  // Return a serializable version immediately
   return {
     ...productData,
     id: docRef.id,
-    createdAt: nowISO,
-    updatedAt: nowISO
+    createdAt: nowISO, // Placeholder, actual value will be from Firestore
+    updatedAt: nowISO  // Placeholder
   };
 }
 
