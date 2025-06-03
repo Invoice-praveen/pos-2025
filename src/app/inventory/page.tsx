@@ -100,8 +100,20 @@ export default function InventoryPage() {
     queryFn: getProducts,
   });
 
+  useEffect(() => {
+    if (products) {
+      console.log("[InventoryPage] Products data from useQuery:", JSON.stringify(products, null, 2));
+    }
+    if (error) {
+      console.error("[InventoryPage] Error fetching products:", error);
+    }
+  }, [products, error]);
+
   const filteredProducts = useMemo(() => {
-    if (!products) return [];
+    if (!products) {
+      console.log("[InventoryPage] filteredProducts: No products data available for filtering.");
+      return [];
+    }
     let items = products;
     if (selectedCategory !== "All Categories") {
       items = items.filter(product => product.category === selectedCategory);
@@ -111,6 +123,7 @@ export default function InventoryPage() {
         product.name.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
+    console.log(`[InventoryPage] filteredProducts: Found ${items.length} products after filtering.`);
     return items;
   }, [products, searchTerm, selectedCategory]);
 
@@ -122,7 +135,7 @@ export default function InventoryPage() {
       toast({ title: "Success", description: "Product added successfully." });
       setIsFormDialogOpen(false);
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast({ variant: "destructive", title: "Error", description: `Failed to add product: ${error.message}` });
     },
   });
@@ -135,7 +148,7 @@ export default function InventoryPage() {
       setIsFormDialogOpen(false);
       setProductToEdit(null);
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast({ variant: "destructive", title: "Error", description: `Failed to update product: ${error.message}` });
     },
   });
@@ -147,7 +160,7 @@ export default function InventoryPage() {
       toast({ title: "Success", description: "Product deleted successfully." });
       setIsConfirmDeleteDialogOpen(false);
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast({ variant: "destructive", title: "Error", description: `Failed to delete product: ${error.message}` });
       setIsConfirmDeleteDialogOpen(false);
     },
@@ -164,7 +177,6 @@ export default function InventoryPage() {
 
   const handleAddNewProduct = () => {
     setProductToEdit(null);
-    // form.reset(); // useEffect handles reset
     setIsFormDialogOpen(true);
   };
 
@@ -186,7 +198,7 @@ export default function InventoryPage() {
 
   const getProductStatus = (stock: number): { text: string; variant: "default" | "secondary" | "destructive" } => {
     if (stock === 0) return { text: "Out of Stock", variant: "destructive" };
-    if (stock <= 10) return { text: "Low Stock", variant: "secondary" }; // Assuming low stock threshold is 10
+    if (stock <= 10) return { text: "Low Stock", variant: "secondary" }; 
     return { text: "In Stock", variant: "default" };
   };
 
@@ -230,14 +242,14 @@ export default function InventoryPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Category</FormLabel>
-                       <Select onValueChange={field.onChange} defaultValue={field.value}>
+                       <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value || undefined}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select a category" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {productCategories.slice(1).map(cat => ( // Exclude "All Categories"
+                          {productCategories.slice(1).map(cat => ( 
                             <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                           ))}
                         </SelectContent>
@@ -252,7 +264,7 @@ export default function InventoryPage() {
                     name="price"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Price ($)</FormLabel>
+                        <FormLabel>Price (₹)</FormLabel>
                         <FormControl>
                           <Input type="number" placeholder="0.00" {...field} />
                         </FormControl>
@@ -399,12 +411,12 @@ export default function InventoryPage() {
                     <TableRow key={product.id}>
                       <TableCell>
                         <Image
-                          src={product.image || `https://placehold.co/40x40.png?text=${product.name.substring(0,2)}`}
-                          alt={product.name}
+                          src={product.image || `https://placehold.co/40x40.png?text=${product.name?.substring(0,2) || 'P'}`}
+                          alt={product.name || 'Product Image'}
                           width={40}
                           height={40}
                           className="rounded object-cover"
-                          data-ai-hint={product.hint || product.name.split(" ").slice(0,2).join(" ").toLowerCase()}
+                          data-ai-hint={product.hint || product.name?.split(" ").slice(0,2).join(" ").toLowerCase() || 'product'}
                         />
                       </TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
@@ -427,10 +439,10 @@ export default function InventoryPage() {
                     </TableRow>
                   );
                 })}
-                {filteredProducts.length === 0 && (
+                 {filteredProducts.length === 0 && !isLoading && (
                      <TableRow>
                         <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                            No products found{searchTerm || selectedCategory !== "All Categories" ? " matching your criteria" : ". Add your first product!"}
+                            {products && products.length === 0 ? "No products found. Add your first product!" : "No products match your current filter."}
                         </TableCell>
                     </TableRow>
                 )}

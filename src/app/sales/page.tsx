@@ -55,17 +55,29 @@ export default function SalesPage() {
   const [selectedCustomerId, setSelectedCustomerId] = React.useState<string>("");
   const [selectedPaymentMode, setSelectedPaymentMode] = React.useState<string>(paymentModes[0]);
 
-  const { data: products = [], isLoading: isLoadingProducts } = useQuery<Product[], Error>({
+  const { data: products = [], isLoading: isLoadingProducts, error: productsError } = useQuery<Product[], Error>({
     queryKey: ['products'],
     queryFn: getProducts,
   });
+
+  React.useEffect(() => {
+    if (products && products.length > 0) {
+      console.log("[SalesPage] Products data from useQuery:", JSON.stringify(products, null, 2));
+    } else if (products && products.length === 0 && !isLoadingProducts) {
+        console.log("[SalesPage] Products data from useQuery is an empty array and not loading.");
+    }
+    if (productsError) {
+      console.error("[SalesPage] Error fetching products:", productsError);
+      toast({ variant: "destructive", title: "Error Loading Products", description: productsError.message });
+    }
+  }, [products, isLoadingProducts, productsError, toast]);
+
 
   const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[], Error>({
     queryKey: ['customers'],
     queryFn: getCustomers,
     onSuccess: (data) => {
       if (data && data.length > 0 && !selectedCustomerId) {
-        // Set default customer if not already set and customers are available
         setSelectedCustomerId(data[0].id!);
       }
     }
@@ -76,11 +88,11 @@ export default function SalesPage() {
     onSuccess: (savedSale) => {
       queryClient.invalidateQueries({ queryKey: ['products'] }); 
       queryClient.invalidateQueries({ queryKey: ['salesHistory'] }); 
-      queryClient.invalidateQueries({ queryKey: ['customers']}); // Invalidate customers to update totalSpent
+      queryClient.invalidateQueries({ queryKey: ['customers']}); 
       toast({ title: "Success", description: `Sale #${savedSale.id?.substring(0,6) || 'N/A'} (Status: ${savedSale.status}) saved successfully.` });
       resetBill();
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error("Failed to save sale:", error)
       toast({ variant: "destructive", title: "Error", description: `Failed to save sale: ${error.message}` });
     },
@@ -106,19 +118,23 @@ export default function SalesPage() {
         }
         return updatedCartItems;
       } else {
-        const newItem: SalesCartItem = {
-          productId: product.id!,
-          itemCode: product.id!.substring(0, 8).toUpperCase(),
-          itemName: product.name,
-          qty: 1,
-          unit: product.category === "Consumables" ? "pcs" : "unit", 
-          priceUnit: product.price,
-          discount: 0,
-          taxApplied: 0,
-          total: product.price,
-          stock: product.stock,
-        };
-        return [...prevCartItems, newItem];
+        if (product.id) {
+            const newItem: SalesCartItem = {
+            productId: product.id,
+            itemCode: product.id.substring(0, 8).toUpperCase(),
+            itemName: product.name,
+            qty: 1,
+            unit: product.category === "Consumables" ? "pcs" : "unit", 
+            priceUnit: product.price,
+            discount: 0,
+            taxApplied: 0,
+            total: product.price,
+            stock: product.stock,
+            };
+            return [...prevCartItems, newItem];
+        }
+        toast({variant: "destructive", title: "Error", description: "Product ID is missing."})
+        return prevCartItems;
       }
     });
   };
@@ -173,12 +189,12 @@ export default function SalesPage() {
   const balanceDue = Math.max(0, totalAmount - currentAmountReceived);
 
   React.useEffect(() => {
-    if (totalAmount > 0 && amountReceived === "" ) { // Only auto-fill if amountReceived is empty and total is > 0
+    if (totalAmount > 0 && amountReceived === "" ) { 
       setAmountReceived(totalAmount.toFixed(2));
     } else if (totalAmount === 0) {
-      setAmountReceived(""); // Clear if total is zero
+      setAmountReceived(""); 
     }
-  }, [totalAmount, amountReceived]); // Rerun if amountReceived also changes to avoid loop
+  }, [totalAmount, amountReceived]); 
 
   const resetBill = () => {
     setCartItems([]);
@@ -223,8 +239,7 @@ export default function SalesPage() {
         toast({ variant: "destructive", title: "Empty Bill", description: "Cannot save a bill with no billable items." });
         return;
     }
-
-    // Status will be set in saleService based on amountReceived vs totalAmount
+    
     const saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'saleDate' | 'status'> = {
       customerId: selectedCustomerId,
       customerName: selectedCustomer?.name || "Unknown Customer",
@@ -240,7 +255,6 @@ export default function SalesPage() {
       amountReceived: currentAmountReceived,
       paymentMode: selectedPaymentMode, 
       changeGiven: changeToReturn,
-      // status: determined by service
     };
     addSaleMutation.mutate(saleData);
   };
@@ -262,7 +276,6 @@ export default function SalesPage() {
       toast({ variant: "outline", title: "Full Payment", description: "Amount received covers total. Use 'Save & Print' for full payment." });
       return;
     }
-    // Save with partial payment status
     handleSaveSale(); 
   };
 
@@ -304,18 +317,18 @@ export default function SalesPage() {
                   onValueChange={setSearchValue}
                 />
                 <CommandList>
-                  <CommandEmpty>{isLoadingProducts ? "Loading..." : "No product found."}</CommandEmpty>
+                  <CommandEmpty>{isLoadingProducts ? "Loading..." : (productsError ? "Error loading products" : "No product found.")}</CommandEmpty>
                   <CommandGroup>
                     {isLoadingProducts ? (
                       <div className="p-2 text-center text-sm text-muted-foreground">Loading products...</div>
-                    ) : products.filter(p => p.name.toLowerCase().includes(searchValue.toLowerCase())).length === 0 && searchValue ? (
+                    ) : products.filter(p => p.name && p.name.toLowerCase().includes(searchValue.toLowerCase())).length === 0 && searchValue ? (
                        <div className="p-2 text-center text-sm text-muted-foreground">No products match "{searchValue}".</div>
-                    ) : products.filter(p => p.name.toLowerCase().includes(searchValue.toLowerCase())).map((product) => (
+                    ) : products.filter(p => p.name && p.name.toLowerCase().includes(searchValue.toLowerCase())).map((product) => (
                         <CommandItem
                           key={product.id}
                           value={product.name}
                           onSelect={(currentValue) => {
-                            const productSelected = products.find(p => p.name.toLowerCase() === currentValue.toLowerCase());
+                            const productSelected = products.find(p => p.name && p.name.toLowerCase() === currentValue.toLowerCase());
                             if (productSelected) {
                               handleAddOrUpdateToCart(productSelected);
                               setSelectedProductForSearch(null);
@@ -337,7 +350,7 @@ export default function SalesPage() {
                           </div>
                           <div className="text-xs text-muted-foreground ml-4">
                             {product.stock <= 0 ? <span className="text-destructive">Out of stock</span> : <span>Stock: {product.stock}</span>}
-                            <span className="ml-2">Price: ₹{product.price.toFixed(2)}</span>
+                            <span className="ml-2">Price: ₹{product.price?.toFixed(2)}</span>
                           </div>
                         </CommandItem>
                       ))
@@ -501,10 +514,10 @@ export default function SalesPage() {
                 {addSaleMutation.isPending ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save &amp; Print Bill [Ctrl+P]</>}
               </Button>
               <div className="grid grid-cols-2 gap-2 w-full">
-                <Button variant="outline" className="text-xs h-9" onClick={handlePartialPay} disabled={currentAmountReceived <=0 || currentAmountReceived >= totalAmount || totalItems === 0 || !selectedCustomerId}>
+                <Button variant="outline" className="text-xs h-9" onClick={handlePartialPay} disabled={addSaleMutation.isPending || currentAmountReceived <=0 || currentAmountReceived >= totalAmount || totalItems === 0 || !selectedCustomerId}>
                    <PieChartIcon className="mr-2 h-3 w-3"/> Partial Pay [Ctrl+B]
                 </Button>
-                <Button variant="outline" className="text-xs h-9" onClick={handleMultiPay}>
+                <Button variant="outline" className="text-xs h-9" onClick={handleMultiPay} disabled={addSaleMutation.isPending}>
                    <Coins className="mr-2 h-3 w-3"/> Multi Pay [Ctrl+M]
                 </Button>
               </div>

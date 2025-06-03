@@ -13,33 +13,51 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-  Timestamp // Changed from "type Timestamp" to value import
+  Timestamp, // Ensured value import
+  FieldValue, // For FieldValue.increment if used, though not directly here
+  increment
 } from 'firebase/firestore';
 
 const productsCollectionRef = collection(db, 'products');
 
-const convertTimestampToString = (timestampField: unknown): string | undefined => {
+// Updated to be more robust and accept context for logging
+const convertTimestampToString = (timestampField: unknown, fieldName?: string, docId?: string): string | undefined => {
+  const context = fieldName && docId ? ` (Field: ${fieldName}, Doc: ${docId})` : '';
   if (!timestampField) return undefined;
-  // Check if it's a Firestore Timestamp object
-  if (timestampField instanceof Timestamp || (typeof (timestampField as any)?.toDate === 'function')) {
-    return (timestampField as Timestamp).toDate().toISOString();
-  }
-  // If it's already a string (e.g., from a previous serialization)
-  if (typeof timestampField === 'string') {
+
+  if (typeof (timestampField as any)?.toDate === 'function') {
     try {
-      // Validate if it's a valid ISO string, then return it
-      new Date(timestampField).toISOString();
-      return timestampField;
+      return (timestampField as { toDate: () => Date }).toDate().toISOString();
     } catch (e) {
-      // Not a valid date string, might be some other string field
-      console.warn('[productService] Non-date string encountered in timestamp field:', timestampField);
-      return undefined; // Or handle as an error
+      console.warn(`[productService] Error converting Firestore Timestamp to ISOString${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
     }
   }
-  if (timestampField instanceof Date) { // Handle native JS Date objects
-    return timestampField.toISOString();
+
+  if (timestampField instanceof Date) {
+    try {
+      return timestampField.toISOString();
+    } catch (e) {
+      console.warn(`[productService] Error converting Date to ISOString${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
+    }
   }
-  console.warn('[productService] Unexpected timestamp format:', timestampField);
+
+  if (typeof timestampField === 'string') {
+    // Basic check for ISO string format
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(timestampField)) {
+      return timestampField;
+    } else if (fieldName === 'createdAt' || fieldName === 'updatedAt') {
+        // If it's a timestamp field and not ISO, log warning and return undefined
+        console.warn(`[productService] Field${context} is a string but not a valid ISO string:`, timestampField);
+        return undefined;
+    }
+    // For other string fields that are not necessarily timestamps, return as is.
+    // However, product type defines createdAt/updatedAt as string, implying ISO.
+    return timestampField;
+  }
+
+  console.warn(`[productService] Unexpected timestamp format for field${context}:`, timestampField, 'Type:', typeof timestampField);
   return undefined;
 };
 
@@ -47,47 +65,61 @@ const convertTimestampToString = (timestampField: unknown): string | undefined =
 export async function getProducts(): Promise<Product[]> {
   const q = query(productsCollectionRef, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
+  console.log(`[productService] getProducts: Fetched ${snapshot.docs.length} product documents from Firestore.`);
+
   return snapshot.docs.map(docSnapshot => {
     const data = docSnapshot.data();
-    return {
-      id: docSnapshot.id,
-      name: data.name,
-      category: data.category,
-      price: data.price,
-      stock: data.stock,
-      image: data.image,
-      hint: data.hint,
-      createdAt: convertTimestampToString(data.createdAt),
-      updatedAt: convertTimestampToString(data.updatedAt),
-    } as Product; // Cast as Product, ensure all fields align
+    const docId = docSnapshot.id;
+    // console.log(`[productService] getProducts: Raw data for product ${docId}:`, JSON.stringify(data));
+
+    const product: Product = {
+      id: docId,
+      name: data.name ?? 'Unknown Product', // Default if name is missing
+      category: data.category ?? 'Other',    // Default category
+      price: typeof data.price === 'number' ? data.price : 0, // Default price
+      stock: typeof data.stock === 'number' ? data.stock : 0, // Default stock
+      image: data.image ?? '',
+      hint: data.hint ?? '',
+      createdAt: convertTimestampToString(data.createdAt, 'createdAt', docId),
+      updatedAt: convertTimestampToString(data.updatedAt, 'updatedAt', docId),
+    };
+    // console.log(`[productService] getProducts: Mapped product ${docId}:`, JSON.stringify(product));
+    return product;
   });
 }
 
 export async function addProduct(productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> {
+  console.log('[productService] addProduct: Adding product:', productData);
   const docRef = await addDoc(productsCollectionRef, {
     ...productData,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
   const nowISO = new Date().toISOString();
-  // Return a serializable version immediately
-  return {
+  const newProduct = {
     ...productData,
     id: docRef.id,
-    createdAt: nowISO, // Placeholder, actual value will be from Firestore
-    updatedAt: nowISO  // Placeholder
+    createdAt: nowISO, 
+    updatedAt: nowISO
   };
+  console.log('[productService] addProduct: Product added successfully:', newProduct);
+  return newProduct;
 }
 
 export async function updateProduct(id: string, productData: Partial<Omit<Product, 'id' | 'createdAt' | 'updatedAt'>>): Promise<void> {
+  console.log(`[productService] updateProduct: Updating product ${id} with:`, productData);
   const productDoc = doc(db, 'products', id);
   await updateDoc(productDoc, {
     ...productData,
     updatedAt: serverTimestamp(),
   });
+  console.log(`[productService] updateProduct: Product ${id} updated successfully.`);
 }
 
 export async function deleteProduct(id: string): Promise<void> {
+  console.log(`[productService] deleteProduct: Deleting product ${id}.`);
   const productDoc = doc(db, 'products', id);
   await deleteDoc(productDoc);
+  console.log(`[productService] deleteProduct: Product ${id} deleted successfully.`);
 }
+
