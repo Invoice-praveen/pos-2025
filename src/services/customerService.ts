@@ -13,43 +13,90 @@ import {
   query, 
   orderBy,
   serverTimestamp,
-  Timestamp // Import Timestamp as a value
+  Timestamp
 } from 'firebase/firestore';
 
 const customersCollectionRef = collection(db, 'customers');
+const SERVICE_NAME = 'customerService';
 
-// Helper to convert Firestore Timestamp to ISO string or return string if already
-const convertTimestampToString = (timestampField: unknown): string | undefined => {
-  if (!timestampField) return undefined;
-  // Check if it's a Firestore Timestamp object
-  if (timestampField instanceof Timestamp || (typeof (timestampField as any)?.toDate === 'function')) {
-    return (timestampField as Timestamp).toDate().toISOString();
+// Robust timestamp conversion helper
+const convertTimestampToString = (timestampField: unknown, fieldName?: string, docId?: string): string | undefined => {
+  const context = fieldName && docId ? ` (Field: ${fieldName}, Doc: ${docId})` : (fieldName ? ` (Field: ${fieldName})` : '');
+  
+  if (timestampField === null || typeof timestampField === 'undefined') {
+    return undefined;
   }
-  // If it's already a string (e.g., from a previous serialization)
-  if (typeof timestampField === 'string') {
-     try {
-      // Validate if it's a valid ISO string, then return it
-      new Date(timestampField).toISOString();
-      return timestampField;
+
+  if (typeof (timestampField as any)?.toDate === 'function') {
+    try {
+      const dateObj = (timestampField as { toDate: () => Date }).toDate();
+      if (isNaN(dateObj.getTime())) {
+        console.warn(`[${SERVICE_NAME}] convertTimestampToString${context}: toDate() resulted in an invalid Date object. Raw value:`, timestampField);
+        return undefined;
+      }
+      return dateObj.toISOString();
     } catch (e) {
-      console.warn('[customerService] Non-date string encountered in timestamp field:', timestampField);
+      console.warn(`[${SERVICE_NAME}] Error converting Firestore Timestamp/toDate() to ISOString${context}:`, e, 'Raw value:', timestampField);
       return undefined;
     }
   }
-  if (timestampField instanceof Date) { // Handle native JS Date objects
-    return timestampField.toISOString();
+
+  if (timestampField instanceof Date) {
+    try {
+      if (isNaN(timestampField.getTime())) {
+        console.warn(`[${SERVICE_NAME}] Invalid native Date object encountered${context}:`, timestampField);
+        return undefined;
+      }
+      return timestampField.toISOString();
+    } catch (e) {
+      console.warn(`[${SERVICE_NAME}] Error converting native Date to ISOString${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
+    }
   }
-  console.warn('[customerService] Unexpected timestamp format:', timestampField);
+
+  if (typeof timestampField === 'string') {
+    try {
+      const d = new Date(timestampField);
+      if (isNaN(d.getTime())) {
+        console.warn(`[${SERVICE_NAME}] Invalid date string encountered${context}:`, timestampField);
+        return undefined;
+      }
+      return d.toISOString();
+    } catch (e) {
+      console.warn(`[${SERVICE_NAME}] Error processing string as date${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
+    }
+  }
+  
+  if (typeof timestampField === 'number') {
+    try {
+      const d = new Date(timestampField);
+      if (isNaN(d.getTime())) {
+        console.warn(`[${SERVICE_NAME}] Invalid number (timestamp in ms) encountered${context}:`, timestampField);
+        return undefined;
+      }
+      return d.toISOString();
+    } catch (e) {
+      console.warn(`[${SERVICE_NAME}] Error converting number (timestamp in ms) to ISOString${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
+    }
+  }
+
+  console.warn(`[${SERVICE_NAME}] Unexpected timestamp format${context}:`, timestampField, 'Type:', typeof timestampField);
   return undefined;
 };
 
 
 export async function getCustomers(): Promise<Customer[]> {
+  console.log(`[${SERVICE_NAME}] getCustomers: Attempting to fetch customers.`);
   const q = query(customersCollectionRef, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
+  console.log(`[${SERVICE_NAME}] getCustomers: Fetched ${snapshot.docs.length} customer documents from Firestore.`);
+  
   return snapshot.docs.map(docSnapshot => {
     const data = docSnapshot.data();
-    // Explicitly construct the Customer object to ensure type compliance and serialization
+    const docId = docSnapshot.id;
+    // console.log(`[${SERVICE_NAME}] getCustomers: Raw data for customer ${docId}:`, JSON.stringify(data));
     const customer: Customer = {
       id: docSnapshot.id,
       name: data.name,
@@ -58,10 +105,11 @@ export async function getCustomers(): Promise<Customer[]> {
       avatar: data.avatar,
       hint: data.hint,
       totalSpent: data.totalSpent || 0,
-      createdAt: convertTimestampToString(data.createdAt),
-      updatedAt: convertTimestampToString(data.updatedAt),
-      lastPurchase: convertTimestampToString(data.lastPurchase),
+      createdAt: convertTimestampToString(data.createdAt, 'createdAt', docId),
+      updatedAt: convertTimestampToString(data.updatedAt, 'updatedAt', docId),
+      lastPurchase: convertTimestampToString(data.lastPurchase, 'lastPurchase', docId),
     };
+    // console.log(`[${SERVICE_NAME}] getCustomers: Mapped customer ${docId}:`, JSON.stringify(customer));
     return customer;
   });
 }
@@ -72,9 +120,8 @@ export async function addCustomer(customerData: Omit<Customer, 'id' | 'createdAt
     totalSpent: 0,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-    lastPurchase: null, // Initialize lastPurchase, can be updated later
+    lastPurchase: null,
   });
-  // Return a serializable representation.
   const nowISO = new Date().toISOString();
   return { 
     ...customerData, 
@@ -82,7 +129,7 @@ export async function addCustomer(customerData: Omit<Customer, 'id' | 'createdAt
     totalSpent: 0, 
     createdAt: nowISO, 
     updatedAt: nowISO,
-    lastPurchase: undefined, // Or null, client will get actual on next fetch
+    lastPurchase: undefined,
   }; 
 }
 

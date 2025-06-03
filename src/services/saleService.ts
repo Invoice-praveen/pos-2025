@@ -20,20 +20,73 @@ import {
 
 const salesCollectionRef = collection(db, 'sales');
 const productsCollectionRef = collection(db, 'products');
+const SERVICE_NAME = 'saleService';
 
-const convertTimestampToString = (timestampField: unknown): string | undefined => {
-  if (!timestampField) return undefined;
-  if (timestampField instanceof Timestamp) { 
-    return timestampField.toDate().toISOString();
+// Robust timestamp conversion helper
+const convertTimestampToString = (timestampField: unknown, fieldName?: string, docId?: string): string | undefined => {
+  const context = fieldName && docId ? ` (Field: ${fieldName}, Doc: ${docId})` : (fieldName ? ` (Field: ${fieldName})` : '');
+  
+  if (timestampField === null || typeof timestampField === 'undefined') {
+    return undefined;
   }
-  if (typeof timestampField === 'string') {
-    return timestampField;
+
+  if (typeof (timestampField as any)?.toDate === 'function') {
+    try {
+      const dateObj = (timestampField as { toDate: () => Date }).toDate();
+      if (isNaN(dateObj.getTime())) {
+        console.warn(`[${SERVICE_NAME}] convertTimestampToString${context}: toDate() resulted in an invalid Date object. Raw value:`, timestampField);
+        return undefined;
+      }
+      return dateObj.toISOString();
+    } catch (e) {
+      console.warn(`[${SERVICE_NAME}] Error converting Firestore Timestamp/toDate() to ISOString${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
+    }
   }
+
   if (timestampField instanceof Date) {
-    return timestampField.toISOString();
+    try {
+      if (isNaN(timestampField.getTime())) {
+        console.warn(`[${SERVICE_NAME}] Invalid native Date object encountered${context}:`, timestampField);
+        return undefined;
+      }
+      return timestampField.toISOString();
+    } catch (e) {
+      console.warn(`[${SERVICE_NAME}] Error converting native Date to ISOString${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
+    }
   }
-  console.warn('[saleService] Unexpected timestamp format:', timestampField);
-  return undefined; 
+
+  if (typeof timestampField === 'string') {
+    try {
+      const d = new Date(timestampField);
+      if (isNaN(d.getTime())) {
+        console.warn(`[${SERVICE_NAME}] Invalid date string encountered${context}:`, timestampField);
+        return undefined;
+      }
+      return d.toISOString();
+    } catch (e) {
+      console.warn(`[${SERVICE_NAME}] Error processing string as date${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
+    }
+  }
+  
+  if (typeof timestampField === 'number') {
+    try {
+      const d = new Date(timestampField);
+      if (isNaN(d.getTime())) {
+        console.warn(`[${SERVICE_NAME}] Invalid number (timestamp in ms) encountered${context}:`, timestampField);
+        return undefined;
+      }
+      return d.toISOString();
+    } catch (e) {
+      console.warn(`[${SERVICE_NAME}] Error converting number (timestamp in ms) to ISOString${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
+    }
+  }
+
+  console.warn(`[${SERVICE_NAME}] Unexpected timestamp format${context}:`, timestampField, 'Type:', typeof timestampField);
+  return undefined;
 };
 
 
@@ -45,13 +98,13 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
     const cleanedSaleItems = saleData.items.map(item => {
       if (!item.productId || typeof item.productId !== 'string' || item.productId.trim() === '') {
         if (Number(item.qty) > 0) { 
-          console.error(`[saleService] addSale: Invalid or missing productId for item: ${item.itemName}`);
+          console.error(`[${SERVICE_NAME}] addSale: Invalid or missing productId for item: ${item.itemName}`);
           throw new Error(`Product ID is missing or invalid for item "${item.itemName}". Sale cannot be processed.`);
         }
       }
       const qtyAsNumber = Number(item.qty);
       if (isNaN(qtyAsNumber)) {
-        console.error(`[saleService] addSale: Invalid quantity for item: ${item.itemName} (value: ${item.qty})`);
+        console.error(`[${SERVICE_NAME}] addSale: Invalid quantity for item: ${item.itemName} (value: ${item.qty})`);
         throw new Error(`Quantity for item "${item.itemName}" is not a valid number. Sale cannot be processed.`);
       }
       
@@ -69,12 +122,12 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
     }).filter(item => item.qty > 0); 
 
     if (cleanedSaleItems.length === 0 && saleData.totalItems > 0) {
-        console.error("[saleService] addSale: No valid items with quantity > 0 to save.");
+        console.error(`[${SERVICE_NAME}] addSale: No valid items with quantity > 0 to save.`);
         throw new Error("No items with quantity greater than 0 to save.");
     }
     
     let saleStatus: Sale['status'] = 'Unknown';
-    if (saleData.totalAmount <= 0 && cleanedSaleItems.length === 0) { // Handles zero total, zero items as completed (e.g. free service)
+    if (saleData.totalAmount <= 0 && cleanedSaleItems.length === 0) {
       saleStatus = 'Completed';
     } else if (saleData.amountReceived >= saleData.totalAmount) {
       saleStatus = 'Completed';
@@ -83,9 +136,8 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
     } else if (saleData.amountReceived === 0 && saleData.totalAmount > 0) {
       saleStatus = 'PendingPayment';
     } else {
-      saleStatus = 'PendingPayment'; // Default for edge cases or zero total amount with items.
+      saleStatus = 'PendingPayment'; 
     }
-
 
     const saleDocumentData = {
         customerId: saleData.customerId,
@@ -101,7 +153,7 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
         payments: saleData.payments.map(p => ({ 
           mode: p.mode, 
           amount: Number(p.amount),
-          paymentDate: new Date().toISOString() // Add payment date for new payments
+          paymentDate: p.paymentDate || new Date().toISOString() 
         })),
         amountReceived: saleData.amountReceived,
         paymentMode: saleData.paymentMode,
@@ -116,11 +168,11 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
 
     for (const item of cleanedSaleItems) {
       if (!item.productId) {
-        console.warn(`[saleService] Skipping stock update for item "${item.itemName}" due to missing productId.`);
+        console.warn(`[${SERVICE_NAME}] addSale: Skipping stock update for item "${item.itemName}" due to missing productId.`);
         continue;
       }
       if (isNaN(item.qty) || item.qty === 0) { 
-        console.warn(`[saleService] Skipping stock update for item "${item.itemName}" due to invalid or zero quantity: ${item.qty}.`);
+        console.warn(`[${SERVICE_NAME}] addSale: Skipping stock update for item "${item.itemName}" due to invalid or zero quantity: ${item.qty}.`);
         continue;
       }
       const productRef = doc(productsCollectionRef, item.productId);
@@ -129,7 +181,6 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
       });
     }
     
-    // Update customer's totalSpent and lastPurchase
     if (saleData.customerId && saleData.totalAmount > 0) {
         const customerRef = doc(db, 'customers', saleData.customerId);
         batch.update(customerRef, {
@@ -138,7 +189,6 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
             updatedAt: serverTimestamp()
         });
     }
-
 
     await batch.commit();
 
@@ -155,7 +205,7 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
       totalAmount: saleData.totalAmount,
       totalItems: cleanedSaleItems.length,
       totalQuantity: cleanedSaleItems.reduce((sum, item) => sum + item.qty, 0),
-      payments: saleDocumentData.payments, // Return payments with added date
+      payments: saleDocumentData.payments,
       amountReceived: saleData.amountReceived,
       paymentMode: saleData.paymentMode,
       changeGiven: saleData.changeGiven,
@@ -167,8 +217,8 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
     };
 
   } catch (error: any) {
-    console.error("[saleService] Error in addSale service. Attempted raw saleData:", JSON.stringify(saleData, null, 2));
-    console.error("[saleService] Full error object:", error); 
+    console.error(`[${SERVICE_NAME}] Error in addSale service. Attempted raw saleData:`, JSON.stringify(saleData, null, 2));
+    console.error(`[${SERVICE_NAME}] Full error object:`, error); 
     
     let errorMessage = 'Unknown error occurred while saving sale.';
     if (error.message) {
@@ -182,10 +232,14 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
 }
 
 export async function getSales(): Promise<Sale[]> {
+  console.log(`[${SERVICE_NAME}] getSales: Attempting to fetch sales.`);
   const q = query(salesCollectionRef, orderBy('saleDate', 'desc'));
   const snapshot = await getDocs(q);
+  console.log(`[${SERVICE_NAME}] getSales: Fetched ${snapshot.docs.length} sale documents from Firestore.`);
+
   return snapshot.docs.map(docSnapshot => {
     const data = docSnapshot.data();
+    const docId = docSnapshot.id;
     const sale: Sale = {
       id: docSnapshot.id,
       customerId: data.customerId,
@@ -198,15 +252,18 @@ export async function getSales(): Promise<Sale[]> {
       totalAmount: data.totalAmount,
       totalItems: data.totalItems,
       totalQuantity: data.totalQuantity,
-      payments: data.payments as SalePayment[],
+      payments: (data.payments as SalePayment[] || []).map(p => ({
+          ...p, 
+          paymentDate: convertTimestampToString(p.paymentDate, 'paymentDate in payments array', docId)
+      })),
       amountReceived: data.amountReceived,
       paymentMode: data.paymentMode,
       changeGiven: data.changeGiven,
       status: data.status as Sale['status'] || 'Unknown',
       notes: data.notes,
-      saleDate: convertTimestampToString(data.saleDate)!, 
-      createdAt: convertTimestampToString(data.createdAt),
-      updatedAt: convertTimestampToString(data.updatedAt),
+      saleDate: convertTimestampToString(data.saleDate, 'saleDate', docId)!, 
+      createdAt: convertTimestampToString(data.createdAt, 'createdAt', docId),
+      updatedAt: convertTimestampToString(data.updatedAt, 'updatedAt', docId),
     };
     return sale;
   });
@@ -214,13 +271,17 @@ export async function getSales(): Promise<Sale[]> {
 
 export async function getSalesByCustomerId(customerId: string): Promise<Sale[]> {
   if (!customerId) {
-    console.warn("[saleService] getSalesByCustomerId: customerId is missing.");
+    console.warn(`[${SERVICE_NAME}] getSalesByCustomerId: customerId is missing.`);
     return [];
   }
+  console.log(`[${SERVICE_NAME}] getSalesByCustomerId: Attempting to fetch sales for customer ${customerId}.`);
   const q = query(salesCollectionRef, where("customerId", "==", customerId), orderBy('saleDate', 'desc'));
   const snapshot = await getDocs(q);
+  console.log(`[${SERVICE_NAME}] getSalesByCustomerId: Fetched ${snapshot.docs.length} sales for customer ${customerId}.`);
+  
   return snapshot.docs.map(docSnapshot => {
     const data = docSnapshot.data();
+    const docId = docSnapshot.id;
     return {
       id: docSnapshot.id,
       customerId: data.customerId,
@@ -233,22 +294,25 @@ export async function getSalesByCustomerId(customerId: string): Promise<Sale[]> 
       totalAmount: data.totalAmount,
       totalItems: data.totalItems,
       totalQuantity: data.totalQuantity,
-      payments: data.payments as SalePayment[],
+      payments: (data.payments as SalePayment[] || []).map(p => ({
+          ...p, 
+          paymentDate: convertTimestampToString(p.paymentDate, 'paymentDate in payments array', docId)
+      })),
       amountReceived: data.amountReceived,
       paymentMode: data.paymentMode,
       changeGiven: data.changeGiven,
       status: data.status as Sale['status'] || 'Unknown',
       notes: data.notes,
-      saleDate: convertTimestampToString(data.saleDate)!,
-      createdAt: convertTimestampToString(data.createdAt),
-      updatedAt: convertTimestampToString(data.updatedAt),
+      saleDate: convertTimestampToString(data.saleDate, 'saleDate', docId)!,
+      createdAt: convertTimestampToString(data.createdAt, 'createdAt', docId),
+      updatedAt: convertTimestampToString(data.updatedAt, 'updatedAt', docId),
     } as Sale;
   });
 }
 
 export async function returnSale(saleId: string, itemsToReturn: SaleItem[]): Promise<void> {
   if (!saleId || !itemsToReturn || itemsToReturn.length === 0) {
-    console.error("[saleService] returnSale: Missing saleId or itemsToReturn.");
+    console.error(`[${SERVICE_NAME}] returnSale: Missing saleId or itemsToReturn.`);
     throw new Error("Missing saleId or items to return.");
   }
 
@@ -263,12 +327,12 @@ export async function returnSale(saleId: string, itemsToReturn: SaleItem[]): Pro
 
     for (const item of itemsToReturn) {
       if (!item.productId || typeof item.productId !== 'string' || item.productId.trim() === '') {
-        console.warn(`[saleService] returnSale: Skipping stock increment for item "${item.itemName}" due to missing productId.`);
+        console.warn(`[${SERVICE_NAME}] returnSale: Skipping stock increment for item "${item.itemName}" due to missing productId.`);
         continue;
       }
       const qtyToReturn = Number(item.qty);
       if (isNaN(qtyToReturn) || qtyToReturn <= 0) {
-        console.warn(`[saleService] returnSale: Skipping stock increment for item "${item.itemName}" due to invalid or zero quantity: ${item.qty}.`);
+        console.warn(`[${SERVICE_NAME}] returnSale: Skipping stock increment for item "${item.itemName}" due to invalid or zero quantity: ${item.qty}.`);
         continue;
       }
       const productRef = doc(productsCollectionRef, item.productId);
@@ -278,9 +342,9 @@ export async function returnSale(saleId: string, itemsToReturn: SaleItem[]): Pro
     }
 
     await batch.commit();
-    console.log(`[saleService] Sale ${saleId} successfully marked as Returned and stock updated.`);
+    console.log(`[${SERVICE_NAME}] Sale ${saleId} successfully marked as Returned and stock updated.`);
   } catch (error: any) {
-    console.error(`[saleService] Error processing return for sale ${saleId}:`, error);
+    console.error(`[${SERVICE_NAME}] Error processing return for sale ${saleId}:`, error);
     let errorMessage = `Failed to process return for sale ${saleId}.`;
     if (error.message) {
       errorMessage += ` Error: ${error.message}`;
@@ -292,7 +356,6 @@ export async function returnSale(saleId: string, itemsToReturn: SaleItem[]): Pro
   }
 }
 
-// Placeholder for adding further payments to an existing sale
 export async function addPaymentToSale(
   saleId: string, 
   newPayment: SalePayment,
@@ -312,9 +375,12 @@ export async function addPaymentToSale(
   let newStatus: Sale['status'] = 'PartiallyPaid';
   if (updatedAmountReceived >= currentTotalAmount) {
     newStatus = 'Completed';
-  } else if (updatedAmountReceived <= 0) {
+  } else if (updatedAmountReceived <= 0 && currentTotalAmount > 0) { // Only pending if total is > 0
     newStatus = 'PendingPayment';
+  } else if (currentTotalAmount <= 0 ) { // If total is 0 or less, it's completed
+     newStatus = 'Completed';
   }
+
 
   await updateDoc(saleRef, {
     payments: updatedPayments,

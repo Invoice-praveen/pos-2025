@@ -13,83 +13,110 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-  Timestamp, // Ensured value import
-  FieldValue, // For FieldValue.increment if used, though not directly here
+  Timestamp,
   increment
 } from 'firebase/firestore';
 
 const productsCollectionRef = collection(db, 'products');
+const SERVICE_NAME = 'productService';
 
-// Updated to be more robust and accept context for logging
+// Robust timestamp conversion helper
 const convertTimestampToString = (timestampField: unknown, fieldName?: string, docId?: string): string | undefined => {
-  const context = fieldName && docId ? ` (Field: ${fieldName}, Doc: ${docId})` : '';
-  if (!timestampField) return undefined;
+  const context = fieldName && docId ? ` (Field: ${fieldName}, Doc: ${docId})` : (fieldName ? ` (Field: ${fieldName})` : '');
+  
+  if (timestampField === null || typeof timestampField === 'undefined') {
+    return undefined;
+  }
 
   if (typeof (timestampField as any)?.toDate === 'function') {
     try {
-      return (timestampField as { toDate: () => Date }).toDate().toISOString();
+      const dateObj = (timestampField as { toDate: () => Date }).toDate();
+      if (isNaN(dateObj.getTime())) {
+        console.warn(`[${SERVICE_NAME}] convertTimestampToString${context}: toDate() resulted in an invalid Date object. Raw value:`, timestampField);
+        return undefined;
+      }
+      return dateObj.toISOString();
     } catch (e) {
-      console.warn(`[productService] Error converting Firestore Timestamp to ISOString${context}:`, e, 'Raw value:', timestampField);
+      console.warn(`[${SERVICE_NAME}] Error converting Firestore Timestamp/toDate() to ISOString${context}:`, e, 'Raw value:', timestampField);
       return undefined;
     }
   }
 
   if (timestampField instanceof Date) {
     try {
+      if (isNaN(timestampField.getTime())) {
+        console.warn(`[${SERVICE_NAME}] Invalid native Date object encountered${context}:`, timestampField);
+        return undefined;
+      }
       return timestampField.toISOString();
     } catch (e) {
-      console.warn(`[productService] Error converting Date to ISOString${context}:`, e, 'Raw value:', timestampField);
+      console.warn(`[${SERVICE_NAME}] Error converting native Date to ISOString${context}:`, e, 'Raw value:', timestampField);
       return undefined;
     }
   }
 
   if (typeof timestampField === 'string') {
-    // Basic check for ISO string format
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(timestampField)) {
-      return timestampField;
-    } else if (fieldName === 'createdAt' || fieldName === 'updatedAt') {
-        // If it's a timestamp field and not ISO, log warning and return undefined
-        console.warn(`[productService] Field${context} is a string but not a valid ISO string:`, timestampField);
+    try {
+      const d = new Date(timestampField);
+      if (isNaN(d.getTime())) {
+        console.warn(`[${SERVICE_NAME}] Invalid date string encountered${context}:`, timestampField);
         return undefined;
+      }
+      return d.toISOString();
+    } catch (e) {
+      console.warn(`[${SERVICE_NAME}] Error processing string as date${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
     }
-    // For other string fields that are not necessarily timestamps, return as is.
-    // However, product type defines createdAt/updatedAt as string, implying ISO.
-    return timestampField;
+  }
+  
+  if (typeof timestampField === 'number') {
+    try {
+      const d = new Date(timestampField);
+      if (isNaN(d.getTime())) {
+        console.warn(`[${SERVICE_NAME}] Invalid number (timestamp in ms) encountered${context}:`, timestampField);
+        return undefined;
+      }
+      return d.toISOString();
+    } catch (e) {
+      console.warn(`[${SERVICE_NAME}] Error converting number (timestamp in ms) to ISOString${context}:`, e, 'Raw value:', timestampField);
+      return undefined;
+    }
   }
 
-  console.warn(`[productService] Unexpected timestamp format for field${context}:`, timestampField, 'Type:', typeof timestampField);
+  console.warn(`[${SERVICE_NAME}] Unexpected timestamp format${context}:`, timestampField, 'Type:', typeof timestampField);
   return undefined;
 };
 
 
 export async function getProducts(): Promise<Product[]> {
+  console.log(`[${SERVICE_NAME}] getProducts: Attempting to fetch products.`);
   const q = query(productsCollectionRef, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
-  console.log(`[productService] getProducts: Fetched ${snapshot.docs.length} product documents from Firestore.`);
+  console.log(`[${SERVICE_NAME}] getProducts: Fetched ${snapshot.docs.length} product documents from Firestore.`);
 
   return snapshot.docs.map(docSnapshot => {
     const data = docSnapshot.data();
     const docId = docSnapshot.id;
-    // console.log(`[productService] getProducts: Raw data for product ${docId}:`, JSON.stringify(data));
+    // console.log(`[${SERVICE_NAME}] getProducts: Raw data for product ${docId}:`, JSON.stringify(data));
 
     const product: Product = {
       id: docId,
-      name: data.name ?? 'Unknown Product', // Default if name is missing
-      category: data.category ?? 'Other',    // Default category
-      price: typeof data.price === 'number' ? data.price : 0, // Default price
-      stock: typeof data.stock === 'number' ? data.stock : 0, // Default stock
+      name: data.name ?? 'Unknown Product',
+      category: data.category ?? 'Other',
+      price: typeof data.price === 'number' ? data.price : 0,
+      stock: typeof data.stock === 'number' ? data.stock : 0,
       image: data.image ?? '',
       hint: data.hint ?? '',
       createdAt: convertTimestampToString(data.createdAt, 'createdAt', docId),
       updatedAt: convertTimestampToString(data.updatedAt, 'updatedAt', docId),
     };
-    // console.log(`[productService] getProducts: Mapped product ${docId}:`, JSON.stringify(product));
+    // console.log(`[${SERVICE_NAME}] getProducts: Mapped product ${docId}:`, JSON.stringify(product));
     return product;
   });
 }
 
 export async function addProduct(productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> {
-  console.log('[productService] addProduct: Adding product:', productData);
+  // console.log(`[${SERVICE_NAME}] addProduct: Adding product:`, productData);
   const docRef = await addDoc(productsCollectionRef, {
     ...productData,
     createdAt: serverTimestamp(),
@@ -102,24 +129,23 @@ export async function addProduct(productData: Omit<Product, 'id' | 'createdAt' |
     createdAt: nowISO, 
     updatedAt: nowISO
   };
-  console.log('[productService] addProduct: Product added successfully:', newProduct);
+  // console.log(`[${SERVICE_NAME}] addProduct: Product added successfully:`, newProduct);
   return newProduct;
 }
 
 export async function updateProduct(id: string, productData: Partial<Omit<Product, 'id' | 'createdAt' | 'updatedAt'>>): Promise<void> {
-  console.log(`[productService] updateProduct: Updating product ${id} with:`, productData);
+  // console.log(`[${SERVICE_NAME}] updateProduct: Updating product ${id} with:`, productData);
   const productDoc = doc(db, 'products', id);
   await updateDoc(productDoc, {
     ...productData,
     updatedAt: serverTimestamp(),
   });
-  console.log(`[productService] updateProduct: Product ${id} updated successfully.`);
+  // console.log(`[${SERVICE_NAME}] updateProduct: Product ${id} updated successfully.`);
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  console.log(`[productService] deleteProduct: Deleting product ${id}.`);
+  // console.log(`[${SERVICE_NAME}] deleteProduct: Deleting product ${id}.`);
   const productDoc = doc(db, 'products', id);
   await deleteDoc(productDoc);
-  console.log(`[productService] deleteProduct: Product ${id} deleted successfully.`);
+  // console.log(`[${SERVICE_NAME}] deleteProduct: Product ${id} deleted successfully.`);
 }
-
