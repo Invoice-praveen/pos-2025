@@ -13,7 +13,7 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-  Timestamp,
+  Timestamp, // Ensure Timestamp is imported as a value
   increment
 } from 'firebase/firestore';
 
@@ -21,13 +21,15 @@ const productsCollectionRef = collection(db, 'products');
 const SERVICE_NAME = 'productService';
 
 // Robust timestamp conversion helper
-const convertTimestampToString = (timestampField: unknown, fieldName?: string, docId?: string): string | undefined => {
-  const context = fieldName && docId ? ` (Field: ${fieldName}, Doc: ${docId})` : (fieldName ? ` (Field: ${fieldName})` : '');
+const convertTimestampToString = (timestampField: unknown, fieldName: string, docId: string): string | undefined => {
+  const context = `(Field: ${fieldName}, Doc: ${docId})`;
   
   if (timestampField === null || typeof timestampField === 'undefined') {
+    // console.warn(`[${SERVICE_NAME}] convertTimestampToString${context}: Timestamp field is null or undefined.`);
     return undefined;
   }
 
+  // Firestore Timestamp or object with toDate method
   if (typeof (timestampField as any)?.toDate === 'function') {
     try {
       const dateObj = (timestampField as { toDate: () => Date }).toDate();
@@ -42,6 +44,7 @@ const convertTimestampToString = (timestampField: unknown, fieldName?: string, d
     }
   }
 
+  // Native JavaScript Date object
   if (timestampField instanceof Date) {
     try {
       if (isNaN(timestampField.getTime())) {
@@ -55,20 +58,22 @@ const convertTimestampToString = (timestampField: unknown, fieldName?: string, d
     }
   }
 
+  // String (attempt to parse as date)
   if (typeof timestampField === 'string') {
     try {
       const d = new Date(timestampField);
       if (isNaN(d.getTime())) {
-        console.warn(`[${SERVICE_NAME}] Invalid date string encountered${context}:`, timestampField);
-        return undefined;
+        // console.warn(`[${SERVICE_NAME}] Invalid date string encountered${context}:`, timestampField);
+        return undefined; // Don't treat all strings as dates, only valid ones
       }
       return d.toISOString();
     } catch (e) {
-      console.warn(`[${SERVICE_NAME}] Error processing string as date${context}:`, e, 'Raw value:', timestampField);
+      // console.warn(`[${SERVICE_NAME}] Error processing string as date${context}:`, e, 'Raw value:', timestampField);
       return undefined;
     }
   }
   
+  // Number (assume milliseconds since epoch)
   if (typeof timestampField === 'number') {
     try {
       const d = new Date(timestampField);
@@ -90,14 +95,30 @@ const convertTimestampToString = (timestampField: unknown, fieldName?: string, d
 
 export async function getProducts(): Promise<Product[]> {
   console.log(`[${SERVICE_NAME}] getProducts: Attempting to fetch products.`);
+  // Ensure your products collection has a 'createdAt' field of type Firestore Timestamp for this query to work correctly.
   const q = query(productsCollectionRef, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
-  console.log(`[${SERVICE_NAME}] getProducts: Fetched ${snapshot.docs.length} product documents from Firestore.`);
+  const fetchedDocCount = snapshot.docs.length;
+  console.log(`[${SERVICE_NAME}] getProducts: Fetched ${fetchedDocCount} product documents from Firestore.`);
 
-  return snapshot.docs.map(docSnapshot => {
+  if (fetchedDocCount === 0) {
+      console.warn(`[${SERVICE_NAME}] getProducts: No documents returned from Firestore. This could be due to:
+      1. The 'products' collection is empty.
+      2. Firestore security rules are preventing reads.
+      3. The 'orderBy("createdAt", ...)' clause is filtering out documents that do not have a 'createdAt' field, or where 'createdAt' is not a Firestore Timestamp.`);
+  }
+
+  const products = snapshot.docs.map(docSnapshot => {
     const data = docSnapshot.data();
     const docId = docSnapshot.id;
-    // console.log(`[${SERVICE_NAME}] getProducts: Raw data for product ${docId}:`, JSON.stringify(data));
+    // Log raw data for each product
+    // console.log(`[${SERVICE_NAME}] getProducts: Raw data for product ${docId}:`, JSON.stringify(data, null, 2));
+    
+    const createdAtStr = convertTimestampToString(data.createdAt, 'createdAt', docId);
+    if (!createdAtStr && fetchedDocCount > 0) { // Only warn if we expected docs
+        console.warn(`[${SERVICE_NAME}] getProducts: Product ${docId} has a missing or invalid 'createdAt' field, which is used for ordering. This document might have been excluded by the orderBy query if the field type was incompatible.`);
+    }
+
 
     const product: Product = {
       id: docId,
@@ -107,45 +128,56 @@ export async function getProducts(): Promise<Product[]> {
       stock: typeof data.stock === 'number' ? data.stock : 0,
       image: data.image ?? '',
       hint: data.hint ?? '',
-      createdAt: convertTimestampToString(data.createdAt, 'createdAt', docId),
+      createdAt: createdAtStr,
       updatedAt: convertTimestampToString(data.updatedAt, 'updatedAt', docId),
     };
-    // console.log(`[${SERVICE_NAME}] getProducts: Mapped product ${docId}:`, JSON.stringify(product));
+    // Log mapped product
+    // console.log(`[${SERVICE_NAME}] getProducts: Mapped product ${docId}:`, JSON.stringify(product, null, 2));
     return product;
   });
+  console.log(`[${SERVICE_NAME}] getProducts: Returning ${products.length} mapped products to the client.`);
+  return products;
 }
 
 export async function addProduct(productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> {
-  // console.log(`[${SERVICE_NAME}] addProduct: Adding product:`, productData);
+  console.log(`[${SERVICE_NAME}] addProduct: Adding product:`, productData);
   const docRef = await addDoc(productsCollectionRef, {
     ...productData,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    createdAt: serverTimestamp(), // Firestore will set this
+    updatedAt: serverTimestamp(), // Firestore will set this
   });
   const nowISO = new Date().toISOString();
   const newProduct = {
     ...productData,
     id: docRef.id,
-    createdAt: nowISO, 
-    updatedAt: nowISO
+    createdAt: nowISO, // Placeholder for immediate client use
+    updatedAt: nowISO  // Placeholder for immediate client use
   };
-  // console.log(`[${SERVICE_NAME}] addProduct: Product added successfully:`, newProduct);
+  console.log(`[${SERVICE_NAME}] addProduct: Product added successfully with ID ${docRef.id}. Client-side representation:`, newProduct);
   return newProduct;
 }
 
 export async function updateProduct(id: string, productData: Partial<Omit<Product, 'id' | 'createdAt' | 'updatedAt'>>): Promise<void> {
-  // console.log(`[${SERVICE_NAME}] updateProduct: Updating product ${id} with:`, productData);
+  console.log(`[${SERVICE_NAME}] updateProduct: Updating product ${id} with:`, productData);
+  if (!id) {
+    console.error(`[${SERVICE_NAME}] updateProduct: Product ID is missing.`);
+    throw new Error("Product ID is required for update.");
+  }
   const productDoc = doc(db, 'products', id);
   await updateDoc(productDoc, {
     ...productData,
     updatedAt: serverTimestamp(),
   });
-  // console.log(`[${SERVICE_NAME}] updateProduct: Product ${id} updated successfully.`);
+  console.log(`[${SERVICE_NAME}] updateProduct: Product ${id} updated successfully.`);
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  // console.log(`[${SERVICE_NAME}] deleteProduct: Deleting product ${id}.`);
+  console.log(`[${SERVICE_NAME}] deleteProduct: Deleting product ${id}.`);
+  if (!id) {
+    console.error(`[${SERVICE_NAME}] deleteProduct: Product ID is missing.`);
+    throw new Error("Product ID is required for deletion.");
+  }
   const productDoc = doc(db, 'products', id);
   await deleteDoc(productDoc);
-  // console.log(`[${SERVICE_NAME}] deleteProduct: Product ${id} deleted successfully.`);
+  console.log(`[${SERVICE_NAME}] deleteProduct: Product ${id} deleted successfully.`);
 }
