@@ -9,8 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Search, UserCircle, ChevronDown, Printer, Save, ChevronsUpDown, Check } from "lucide-react";
-import type { ReactNode } from 'react';
+import { PlusCircle, Search, ChevronsUpDown, Check, Trash2, Save } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -28,15 +27,20 @@ import { cn } from "@/lib/utils";
 import { useQuery } from '@tanstack/react-query';
 import { getProducts } from '@/services/productService';
 import type { Product } from '@/types';
+import { useToast } from '@/hooks/use-toast';
 
-
-// Mock Data
-const mockCartItems = [
-  { id: "1", itemCode: "38671572297", itemName: "Basmati Rice, 1Kg", qty: 1.00, unit: "-", priceUnit: 200.00, discount: 20.00, taxApplied: 0.00, total: 180.00 },
-  { id: "2", itemCode: "38645371846", itemName: "Fortune Oil, 1L", qty: 1.00, unit: "-", priceUnit: 113.00, discount: 13.56, taxApplied: 4.97, total: 104.41 },
-  { id: "3", itemCode: "3865899396", itemName: "Surf Excel Powder, 3Kg", qty: 1.00, unit: "-", priceUnit: 555.00, discount: 66.60, taxApplied: 0.00, total: 488.40 },
-  { id: "4", itemCode: "38678387182", itemName: "Maggi, 4pack", qty: 1.00, unit: "-", priceUnit: 300.00, discount: 36.00, taxApplied: 13.20, total: 277.20 },
-];
+interface SalesCartItem {
+  productId: string;
+  itemCode: string;
+  itemName: string;
+  qty: number;
+  unit: string;
+  priceUnit: number;
+  discount: number;
+  taxApplied: number;
+  total: number;
+  stock: number;
+}
 
 const mockCustomers = [
   { id: "cust1", name: "Anant Gopakumar", phone: "+91 911234567890" },
@@ -56,27 +60,114 @@ const BillDetailRow = ({ label, value, isBold = false, isNegative = false, curre
 );
 
 export default function SalesPage() {
+  const { toast } = useToast();
   const [openCombobox, setOpenCombobox] = React.useState(false);
   const [selectedProductForSearch, setSelectedProductForSearch] = React.useState<Product | null>(null);
+  const [searchValue, setSearchValue] = React.useState("");
+
+  const [cartItems, setCartItems] = React.useState<SalesCartItem[]>([]);
+  const [amountReceived, setAmountReceived] = React.useState<string>("");
+  const [selectedCustomerId, setSelectedCustomerId] = React.useState<string>(mockCustomers[0].id);
 
   const { data: products = [], isLoading: isLoadingProducts } = useQuery<Product[], Error>({
     queryKey: ['products'],
     queryFn: getProducts,
   });
 
-  const subTotal = mockCartItems.reduce((sum, item) => sum + item.priceUnit * item.qty, 0);
-  const totalDiscount = mockCartItems.reduce((sum, item) => sum + item.discount, 0);
-  const totalTax = mockCartItems.reduce((sum, item) => sum + item.taxApplied, 0);
-  const roundOff = -0.01; // Example
+  const handleAddOrUpdateToCart = (product: Product) => {
+    if (product.stock <= 0) {
+      toast({ title: "Out of Stock", description: `${product.name} is currently out of stock.`, variant: "destructive" });
+      return;
+    }
+
+    setCartItems(prevCartItems => {
+      const existingItemIndex = prevCartItems.findIndex(item => item.productId === product.id);
+      if (existingItemIndex > -1) {
+        const updatedCartItems = [...prevCartItems];
+        const currentItem = updatedCartItems[existingItemIndex];
+        if (currentItem.qty < product.stock) {
+          currentItem.qty += 1;
+          currentItem.total = currentItem.qty * currentItem.priceUnit; // Basic total, no discount/tax yet
+        } else {
+          toast({ title: "Stock Limit Reached", description: `Cannot add more ${product.name}. Available stock: ${product.stock}.`, variant: "destructive" });
+        }
+        return updatedCartItems;
+      } else {
+        const newItem: SalesCartItem = {
+          productId: product.id!,
+          itemCode: product.id!.substring(0, 8).toUpperCase(), // Example item code
+          itemName: product.name,
+          qty: 1,
+          unit: "-",
+          priceUnit: product.price,
+          discount: 0, // Placeholder
+          taxApplied: 0, // Placeholder
+          total: product.price, // Basic total
+          stock: product.stock,
+        };
+        return [...prevCartItems, newItem];
+      }
+    });
+  };
+
+  const handleRemoveFromCart = (productId: string) => {
+    setCartItems(prevCartItems => prevCartItems.filter(item => item.productId !== productId));
+  };
+
+  const handleQuantityChange = (productId: string, newQty: number) => {
+    setCartItems(prevCartItems =>
+      prevCartItems.map(item => {
+        if (item.productId === productId) {
+          const productDetails = products.find(p => p.id === productId);
+          if (productDetails) {
+            if (newQty > 0 && newQty <= productDetails.stock) {
+              return { ...item, qty: newQty, total: newQty * item.priceUnit };
+            } else if (newQty > productDetails.stock) {
+              toast({ title: "Stock Limit Exceeded", description: `Only ${productDetails.stock} units of ${item.itemName} available.`, variant: "destructive"});
+              return { ...item, qty: productDetails.stock, total: productDetails.stock * item.priceUnit };
+            } else if (newQty <= 0) {
+              // Optionally remove item if qty is 0 or less, or just keep it at 1
+              // For now, let's prevent going below 1 via input. Removal is separate.
+              return { ...item, qty: 1, total: 1 * item.priceUnit };
+            }
+          }
+        }
+        return item;
+      })
+    );
+  };
+
+
+  const subTotal = cartItems.reduce((sum, item) => sum + item.priceUnit * item.qty, 0);
+  const totalDiscount = cartItems.reduce((sum, item) => sum + item.discount, 0); // Placeholder
+  const totalTax = cartItems.reduce((sum, item) => sum + item.taxApplied, 0); // Placeholder
+  const roundOff = 0.00; // Example, can be dynamic later
   const totalAmount = subTotal - totalDiscount + totalTax + roundOff;
-  const totalItems = mockCartItems.length;
-  const totalQuantity = mockCartItems.reduce((sum, item) => sum + item.qty, 0);
+  const totalItems = cartItems.length;
+  const totalQuantity = cartItems.reduce((sum, item) => sum + item.qty, 0);
+  
+  const changeToReturn = Math.max(0, parseFloat(amountReceived || "0") - totalAmount);
+
+  React.useEffect(() => {
+    if (totalAmount > 0) {
+      setAmountReceived(totalAmount.toFixed(2));
+    } else {
+      setAmountReceived("");
+    }
+  }, [totalAmount]);
+
 
   return (
-    <div className="flex flex-col h-screen bg-muted/40 p-4 gap-4">
+    <div className="flex flex-col h-[calc(100vh-var(--header-height,4rem)-2rem)] bg-muted/40 p-4 gap-4">
       {/* Top Bar */}
       <div className="flex items-center gap-4 shrink-0">
-        <Button variant="outline" className="bg-background">
+        <Button variant="outline" className="bg-background" onClick={() => {
+          setCartItems([]);
+          setSelectedProductForSearch(null);
+          setSearchValue("");
+          setAmountReceived("");
+          toast({title: "New Bill Created", description: "Cart has been cleared."})
+        }}>
           <PlusCircle className="mr-2 h-4 w-4" /> New Bill [Ctrl+T]
         </Button>
         <div className="relative flex-grow">
@@ -96,34 +187,34 @@ export default function SalesPage() {
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-              <Command>
-                <CommandInput placeholder="Search product..." />
+              <Command shouldFilter={false}> {/* Manual filtering via searchValue */}
+                <CommandInput 
+                  placeholder="Search product..." 
+                  value={searchValue}
+                  onValueChange={setSearchValue}
+                />
                 <CommandList>
-                  <CommandEmpty>No product found.</CommandEmpty>
+                  <CommandEmpty>{isLoadingProducts ? "Loading..." : "No product found."}</CommandEmpty>
                   <CommandGroup>
                     {isLoadingProducts ? (
                       <div className="p-2 text-center text-sm text-muted-foreground">Loading products...</div>
-                    ) : products.length === 0 ? (
-                       <div className="p-2 text-center text-sm text-muted-foreground">No products in inventory.</div>
-                    ) : (
-                      products.map((product) => (
+                    ) : products.filter(p => p.name.toLowerCase().includes(searchValue.toLowerCase())).length === 0 && searchValue ? (
+                       <div className="p-2 text-center text-sm text-muted-foreground">No products match "{searchValue}".</div>
+                    ) : products.filter(p => p.name.toLowerCase().includes(searchValue.toLowerCase())).map((product) => (
                         <CommandItem
                           key={product.id}
                           value={product.name}
                           onSelect={(currentValue) => {
                             const productSelected = products.find(p => p.name.toLowerCase() === currentValue.toLowerCase());
-                            setSelectedProductForSearch(productSelected || null);
-                            setOpenCombobox(false);
                             if (productSelected) {
-                              console.log("Product selected for cart:", productSelected);
-                              // TODO: Add product to cart/bill logic here
-                              // Example: addProductToCart(productSelected);
-                              // For now, we can clear the selectedProductForSearch to allow immediate re-search
-                              // or set it and have another mechanism to add to cart
-                              // setSelectedProductForSearch(null); // Optional: clear after selection for new search
+                              handleAddOrUpdateToCart(productSelected);
+                              setSelectedProductForSearch(null); // Clear selection display
+                              setSearchValue(""); // Clear search input
                             }
+                            setOpenCombobox(false);
                           }}
                           className="flex justify-between items-center"
+                          disabled={product.stock <=0}
                         >
                           <div className="flex items-center">
                             <Check
@@ -135,52 +226,73 @@ export default function SalesPage() {
                             <span className="truncate">{product.name}</span>
                           </div>
                           <div className="text-xs text-muted-foreground ml-4">
-                            <span>Stock: {product.stock}</span>
-                            <span className="ml-2">Price: ${product.price.toFixed(2)}</span>
+                            {product.stock <= 0 ? <span className="text-destructive">Out of stock</span> : <span>Stock: {product.stock}</span>}
+                            <span className="ml-2">Price: ₹{product.price.toFixed(2)}</span>
                           </div>
                         </CommandItem>
                       ))
-                    )}
+                    }
                   </CommandGroup>
                 </CommandList>
               </Command>
             </PopoverContent>
           </Popover>
         </div>
-        {/* Placeholder for window controls if needed */}
       </div>
 
       {/* Main Content Area */}
       <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
         {/* Left Column: Bill Items Table */}
         <div className="lg:col-span-2 bg-background shadow-sm rounded-lg overflow-hidden flex flex-col">
-          <div className="overflow-x-auto flex-grow">
+          <div className="overflow-y-auto flex-grow">
             <Table className="min-w-full">
               <TableHeader>
                 <TableRow className="bg-muted/50">
                   <TableHead className="w-[50px] px-3 py-2 text-xs">#</TableHead>
                   <TableHead className="px-3 py-2 text-xs">ITEM CODE</TableHead>
                   <TableHead className="px-3 py-2 text-xs">ITEM NAME</TableHead>
-                  <TableHead className="text-right px-3 py-2 text-xs">QTY</TableHead>
+                  <TableHead className="text-right px-3 py-2 text-xs w-[80px]">QTY</TableHead>
                   <TableHead className="text-center px-3 py-2 text-xs">UNIT</TableHead>
                   <TableHead className="text-right px-3 py-2 text-xs">PRICE/UNIT(₹)</TableHead>
-                  <TableHead className="text-right px-3 py-2 text-xs">DISCOUNT(₹)</TableHead>
-                  <TableHead className="text-right px-3 py-2 text-xs">TAX APPLIED(₹)</TableHead>
+                  <TableHead className="text-right px-3 py-2 text-xs">DISC(₹)</TableHead>
+                  <TableHead className="text-right px-3 py-2 text-xs">TAX(₹)</TableHead>
                   <TableHead className="text-right px-3 py-2 text-xs">TOTAL(₹)</TableHead>
+                  <TableHead className="text-right px-3 py-2 text-xs w-[50px]">DEL</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mockCartItems.map((item, index) => (
-                  <TableRow key={item.id} className={index === 3 ? "bg-primary/10 dark:bg-primary/20" : ""}>
-                    <TableCell className="px-3 py-2 text-xs">{index + 1}</TableCell>
-                    <TableCell className="px-3 py-2 text-xs">{item.itemCode}</TableCell>
-                    <TableCell className="px-3 py-2 text-xs font-medium">{item.itemName}</TableCell>
-                    <TableCell className="text-right px-3 py-2 text-xs">{item.qty.toFixed(2)}</TableCell>
-                    <TableCell className="text-center px-3 py-2 text-xs">{item.unit}</TableCell>
-                    <TableCell className="text-right px-3 py-2 text-xs">{item.priceUnit.toFixed(2)}</TableCell>
-                    <TableCell className="text-right px-3 py-2 text-xs">{item.discount.toFixed(2)}</TableCell>
-                    <TableCell className="text-right px-3 py-2 text-xs">{item.taxApplied.toFixed(2)}</TableCell>
-                    <TableCell className="text-right px-3 py-2 text-xs font-semibold">{item.total.toFixed(2)}</TableCell>
+                {cartItems.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-4">
+                      Cart is empty. Add products using the search bar above.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {cartItems.map((item, index) => (
+                  <TableRow key={item.productId}>
+                    <TableCell className="px-3 py-1.5 text-xs">{index + 1}</TableCell>
+                    <TableCell className="px-3 py-1.5 text-xs">{item.itemCode}</TableCell>
+                    <TableCell className="px-3 py-1.5 text-xs font-medium">{item.itemName}</TableCell>
+                    <TableCell className="text-right px-3 py-1.5 text-xs">
+                      <Input
+                        type="number"
+                        value={item.qty}
+                        onChange={(e) => handleQuantityChange(item.productId, parseInt(e.target.value, 10))}
+                        min={1}
+                        max={item.stock}
+                        className="h-7 w-16 text-xs text-right tabular-nums"
+                      />
+                    </TableCell>
+                    <TableCell className="text-center px-3 py-1.5 text-xs">{item.unit}</TableCell>
+                    <TableCell className="text-right px-3 py-1.5 text-xs">{item.priceUnit.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-3 py-1.5 text-xs">{item.discount.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-3 py-1.5 text-xs">{item.taxApplied.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-3 py-1.5 text-xs font-semibold">{item.total.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-1 py-1.5">
+                       <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleRemoveFromCart(item.productId)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                       </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -195,7 +307,7 @@ export default function SalesPage() {
               <CardTitle className="text-base">Customer Details</CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4">
-              <Select defaultValue={mockCustomers[0].id}>
+              <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
                 <SelectTrigger className="h-9 text-xs">
                   <SelectValue placeholder="Select customer" />
                 </SelectTrigger>
@@ -227,7 +339,7 @@ export default function SalesPage() {
             </CardContent>
             
             <div className="px-4 py-3 border-t mt-auto">
-                <Label className="text-sm font-medium">Cash/UPI</Label>
+                <Label className="text-sm font-medium">Payment Details</Label>
                 <div className="mt-2 space-y-3">
                     <div className="grid grid-cols-3 items-center gap-2">
                         <Label htmlFor="paymentMode" className="text-xs col-span-1">Payment Mode:</Label>
@@ -246,22 +358,28 @@ export default function SalesPage() {
                         <Label htmlFor="amountReceived" className="text-xs col-span-1">Amount Received:</Label>
                         <div className="relative col-span-2">
                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">₹</span>
-                            <Input id="amountReceived" type="number" defaultValue={totalAmount.toFixed(2)} className="h-9 pl-6 text-xs text-right" />
+                            <Input 
+                              id="amountReceived" 
+                              type="number" 
+                              value={amountReceived}
+                              onChange={(e) => setAmountReceived(e.target.value)}
+                              placeholder={totalAmount.toFixed(2)}
+                              className="h-9 pl-6 text-xs text-right" />
                         </div>
                     </div>
                     <div className="flex justify-between items-center text-sm">
                         <Label className="text-xs">Change to Return:</Label>
-                        <span className="font-semibold text-base">₹ 0.00</span>
+                        <span className="font-semibold text-base">₹ {changeToReturn.toFixed(2)}</span>
                     </div>
                 </div>
             </div>
             <CardFooter className="flex-col gap-2 p-3 border-t">
-              <Button size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white">
+              <Button size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white" disabled={cartItems.length === 0}>
                 <Save className="mr-2 h-4 w-4" /> Save & Print Bill [Ctrl+P]
               </Button>
               <div className="grid grid-cols-2 gap-2 w-full">
-                <Button variant="outline" className="text-xs h-9">Partial Pay [Ctrl+B]</Button>
-                <Button variant="outline" className="text-xs h-9">Multi Pay [Ctrl+M]</Button>
+                <Button variant="outline" className="text-xs h-9" disabled>Partial Pay [Ctrl+B]</Button>
+                <Button variant="outline" className="text-xs h-9" disabled>Multi Pay [Ctrl+M]</Button>
               </div>
             </CardFooter>
           </Card>
@@ -271,7 +389,7 @@ export default function SalesPage() {
       {/* Bottom Action Bar */}
       <div className="shrink-0 grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
         {['Change Quantity [F2]', 'Item Discount [F3]', 'Remove Item [F4]', 'Bill Tax [F7]', 'Additional Charges [F8]', 'Bill Discount [F9]', 'Loyalty Points [F10]', 'Remarks [F12]'].map(label => (
-          <Button key={label} variant="outline" className="text-xs h-10 bg-background whitespace-normal text-center leading-tight justify-center">
+          <Button key={label} variant="outline" className="text-xs h-10 bg-background whitespace-normal text-center leading-tight justify-center" disabled>
             {label}
           </Button>
         ))}
@@ -279,3 +397,4 @@ export default function SalesPage() {
     </div>
   );
 }
+

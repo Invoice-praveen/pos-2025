@@ -1,33 +1,9 @@
-
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Default deny all reads and writes
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if
+          request.time < timestamp.date(2020, 11, 13);
     }
-
-    // Products collection
-    // Allow authenticated users to read and write products
-    match /products/{productId} {
-      allow read, write: if request.auth != null;
-    }
-
-    // Example for a 'customers' collection where users can only manage their own document
-    // match /customers/{userId} {
-    //   allow read, update, delete: if request.auth != null && request.auth.uid == userId;
-    //   allow create: if request.auth != null;
-    // }
-
-    // Example for a 'sales' collection
-    // match /sales/{saleId} {
-    //   // Allow authenticated users to create sales
-    //   allow create: if request.auth != null;
-    //   // Allow users to read sales if they are an admin (custom claim) or if they made the sale
-    //   allow read: if request.auth != null && (request.auth.token.admin == true || request.resource.data.userId == request.auth.uid);
-    //   // More granular update/delete rules would go here
-    // }
   }
 }
