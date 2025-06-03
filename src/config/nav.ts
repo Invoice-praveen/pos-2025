@@ -53,13 +53,13 @@ export const navItems: NavItem[] = [
     title: 'Services',
     href: '/services',
     icon: 'Wrench',
-    disabled: false, // Keep disabled for now as per original
+    disabled: false,
   },
   {
     title: 'Payments',
     href: '/payments',
     icon: 'CreditCard',
-    disabled: false, // Keep disabled for now as per original
+    disabled: false,
   },
 ];
 
@@ -68,7 +68,6 @@ export const bottomNavItems: NavItem[] = [
         title: 'Settings',
         href: '/settings',
         icon: 'Settings',
-        disabled: true, 
+        disabled: false, // Enabled settings page
     }
 ]
-

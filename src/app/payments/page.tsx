@@ -1,4 +1,6 @@
 
+'use client'; // Added 'use client' directive
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,17 +9,16 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CheckCircle, CreditCard as CreditCardIcon, Landmark, DollarSign } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast"; // Added useToast
-import type { FormEvent } from 'react'; // For form submission type
+import { useToast } from "@/hooks/use-toast";
+import type { FormEvent } from 'react';
 
 export default function PaymentsPage() {
   const orderTotal = 125.99; // Example total from sales page
-  const { toast } = useToast(); // Initialize toast
+  const { toast } = useToast();
 
   const handleConfirmPayment = (event: FormEvent) => {
-    event.preventDefault(); // Prevent default form submission
+    event.preventDefault();
     // TODO: Implement actual payment processing logic here
-    // For now, just show a success toast as if payment was confirmed.
     toast({
       title: "Payment Confirmed (Demo)",
       description: `Payment of $${orderTotal.toFixed(2)} processed successfully.`,
@@ -32,7 +33,7 @@ export default function PaymentsPage() {
         <p className="text-muted-foreground">Complete the transaction for Order #ORD12345</p>
       </div>
 
-      <form onSubmit={handleConfirmPayment}> {/* Added form element and onSubmit */}
+      <form onSubmit={handleConfirmPayment}>
         <Card>
           <CardHeader>
             <CardTitle>Order Total: ${orderTotal.toFixed(2)}</CardTitle>
@@ -129,7 +130,7 @@ export default function PaymentsPage() {
 
           </CardContent>
           <CardFooter>
-            <Button type="submit" size="lg" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"> {/* Changed to type="submit" */}
+            <Button type="submit" size="lg" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
               <CheckCircle className="mr-2 h-5 w-5" /> Confirm Payment of ${orderTotal.toFixed(2)}
             </Button>
           </CardFooter>
@@ -138,4 +139,3 @@ export default function PaymentsPage() {
     </div>
   );
 }
-
