@@ -1,3 +1,4 @@
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,9 +29,9 @@ export default function ServicesPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-3xl font-bold font-headline">Service Tracking</h1>
-        <Dialog>
+        <Dialog> {/* TODO: Convert to react-hook-form and connect to backend */}
           <DialogTrigger asChild>
-            <Button>
+            <Button disabled> {/* TODO: Enable when form is connected */}
               <PlusCircle className="mr-2 h-4 w-4" /> Log New Service
             </Button>
           </DialogTrigger>
@@ -79,11 +80,12 @@ export default function ServicesPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row gap-4 justify-between">
-            <Input
-              placeholder="Search services by name or customer..."
-              className="max-w-xs"
-              icon={<Search className="h-4 w-4 text-muted-foreground" />}
-            />
+            <div className="relative w-full max-w-xs">
+              <Input
+                placeholder="Search services by name or customer..."
+              />
+              <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            </div>
              <Select>
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Filter by Status" />
@@ -120,9 +122,9 @@ export default function ServicesPage() {
                       <Settings2 className="h-4 w-4 text-primary" />
                     </div>
                   </TableCell>
-                  <TableCell className="font-medium">{service.serviceName || service.name}</TableCell>
+                  <TableCell className="font-medium">{service.serviceName || (service as any).name}</TableCell>
                   <TableCell>{service.customer}</TableCell>
-                  <TableCell>{service.date}</TableCell>
+                  <TableCell>{service.date as string}</TableCell>
                   <TableCell>
                     <Badge variant={service.type === "Paid" ? "default" : "secondary"}>
                       {service.type}
@@ -142,10 +144,10 @@ export default function ServicesPage() {
                   </TableCell>
                   <TableCell className="text-right">${service.cost.toFixed(2)}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="mr-1">
+                    <Button variant="ghost" size="icon" className="mr-1" disabled> {/* TODO */}
                       <Edit3 className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" disabled> {/* TODO */}
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TableCell>

@@ -1,3 +1,4 @@
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,18 +18,19 @@ export default function CustomersPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-3xl font-bold font-headline">Customer Management</h1>
-        <Button>
+        <Button disabled> {/* TODO: Implement Add Customer */}
           <PlusCircle className="mr-2 h-4 w-4" /> Add New Customer
         </Button>
       </div>
 
       <Card>
         <CardHeader>
+          <div className="relative w-full max-w-md">
             <Input
               placeholder="Search customers by name, email, or phone..."
-              className="max-w-md"
-              icon={<UserSearch className="h-4 w-4 text-muted-foreground" />}
             />
+            <UserSearch className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -66,13 +68,13 @@ export default function CustomersPage() {
                   <TableCell className="text-right">${customer.totalSpent.toFixed(2)}</TableCell>
                   <TableCell>{customer.lastPurchase}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="mr-1" title="View Purchase History">
+                    <Button variant="ghost" size="icon" className="mr-1" title="View Purchase History" disabled> {/* TODO */}
                       <ShoppingBag className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="mr-1" title="Edit Customer">
+                    <Button variant="ghost" size="icon" className="mr-1" title="Edit Customer" disabled> {/* TODO */}
                       <Edit3 className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Customer">
+                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Customer" disabled> {/* TODO */}
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TableCell>
