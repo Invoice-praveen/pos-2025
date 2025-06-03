@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -28,9 +27,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProducts } from '@/services/productService';
 import { getCustomers } from '@/services/customerService';
 import { addSale } from '@/services/saleService';
-import type { Product, Customer, SalesCartItem, Sale, SaleItem, SalePayment } from '@/types';
+import type { Product, Customer, SalesCartItem, Sale, SaleItem } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { serverTimestamp } from 'firebase/firestore';
+// import { serverTimestamp } from 'firebase/firestore'; // Already imported in saleService
 
 const paymentModes = ["Cash", "UPI", "Card", "Other"];
 
@@ -127,10 +126,10 @@ export default function SalesPage() {
 
   const handleQuantityChange = (productId: string, newQtyString: string) => {
     const newQty = parseInt(newQtyString, 10);
-     if (isNaN(newQty)) { // Handle empty input or non-numeric input
+     if (isNaN(newQty)) { 
         setCartItems(prevCartItems => prevCartItems.map(item => {
             if (item.productId === productId) {
-                return {...item, qty: 0, total: 0}; // Or keep current if preferred
+                return {...item, qty: 0, total: 0}; 
             }
             return item;
         }));
@@ -147,8 +146,7 @@ export default function SalesPage() {
             } else if (newQty > productDetails.stock) {
               toast({ title: "Stock Limit Exceeded", description: `Only ${productDetails.stock} units of ${item.itemName} available.`, variant: "destructive"});
               return { ...item, qty: productDetails.stock, total: productDetails.stock * item.priceUnit };
-            } else if (newQty <= 0) {
-              // Allow setting to 0, to be removed if needed or kept to indicate it was in cart
+            } else { // newQty <= 0
                return { ...item, qty: 0, total: 0 };
             }
           }
@@ -160,8 +158,8 @@ export default function SalesPage() {
 
 
   const subTotal = cartItems.reduce((sum, item) => sum + item.priceUnit * item.qty, 0);
-  const totalDiscount = cartItems.reduce((sum, item) => sum + item.discount, 0);
-  const totalTax = cartItems.reduce((sum, item) => sum + item.taxApplied, 0);
+  const totalDiscount = cartItems.reduce((sum, item) => sum + item.discount, 0); // Assuming discount is per item total
+  const totalTax = cartItems.reduce((sum, item) => sum + item.taxApplied, 0); // Assuming tax is per item total
   const roundOff = 0.00; 
   const totalAmount = subTotal - totalDiscount + totalTax + roundOff;
   const totalItems = cartItems.filter(item => item.qty > 0).length;
@@ -184,8 +182,8 @@ export default function SalesPage() {
     setSelectedProductForSearch(null);
     setSearchValue("");
     setAmountReceived("");
-    if (customers && customers.length > 0) {
-      setSelectedCustomerId(customers[0].id!);
+    if (customers && customers.length > 0 && customers[0].id) {
+      setSelectedCustomerId(customers[0].id);
     } else {
       setSelectedCustomerId("");
     }
@@ -193,8 +191,8 @@ export default function SalesPage() {
   }
 
   const handleSaveSale = () => {
-    if (cartItems.length === 0) {
-      toast({ variant: "destructive", title: "Empty Cart", description: "Cannot save an empty bill." });
+    if (totalItems === 0) {
+      toast({ variant: "destructive", title: "Empty Bill", description: "Cannot save a bill with no billable items." });
       return;
     }
     if (currentAmountReceived < totalAmount) {
@@ -208,17 +206,24 @@ export default function SalesPage() {
 
     const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
 
-    const saleItems: SaleItem[] = cartItems.map(cartItem => ({
-      productId: cartItem.productId,
-      itemCode: cartItem.itemCode,
-      itemName: cartItem.itemName,
-      qty: cartItem.qty,
-      unit: cartItem.unit,
-      priceUnit: cartItem.priceUnit,
-      discount: cartItem.discount,
-      taxApplied: cartItem.taxApplied,
-      total: cartItem.total,
+    const saleItems: SaleItem[] = cartItems
+      .filter(cartItem => cartItem.qty > 0) // Only include items with quantity > 0
+      .map(cartItem => ({
+        productId: cartItem.productId,
+        itemCode: cartItem.itemCode,
+        itemName: cartItem.itemName,
+        qty: cartItem.qty,
+        unit: cartItem.unit,
+        priceUnit: cartItem.priceUnit,
+        discount: cartItem.discount,
+        taxApplied: cartItem.taxApplied,
+        total: cartItem.total,
     }));
+
+    if (saleItems.length === 0) { // Double check after filtering
+        toast({ variant: "destructive", title: "Empty Bill", description: "Cannot save a bill with no billable items." });
+        return;
+    }
 
     const saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'saleDate'> = {
       customerId: selectedCustomerId,
@@ -229,31 +234,24 @@ export default function SalesPage() {
       totalTax,
       roundOff,
       totalAmount,
-      totalItems,
-      totalQuantity,
-      payments: [{ mode: selectedPaymentMode, amount: currentAmountReceived }], // For now, single payment
+      totalItems, // This is the count of distinct product lines with qty > 0
+      totalQuantity, // This is the sum of all quantities
+      payments: [{ mode: selectedPaymentMode, amount: currentAmountReceived }], 
       amountReceived: currentAmountReceived,
-      paymentMode: selectedPaymentMode,
+      paymentMode: selectedPaymentMode, 
       changeGiven: changeToReturn,
       status: 'Completed',
-      // saleDate is set by serverTimestamp in service
+      // saleDate is set by serverTimestamp in saleService
     };
     addSaleMutation.mutate(saleData);
   };
   
   const handlePartialPay = () => {
     toast({title: "Not Implemented", description: "Partial Pay functionality is not yet implemented."});
-    // TODO: Implement Partial Pay logic
-    // - Allow saving sale if amountReceived < totalAmount
-    // - Mark sale status as 'PartiallyPaid'
-    // - Store balanceDue
   };
 
   const handleMultiPay = () => {
     toast({title: "Not Implemented", description: "Multi Pay functionality is not yet implemented."});
-    // TODO: Implement Multi Pay logic
-    // - UI to add multiple payment methods and amounts
-    // - Store payments as an array in the Sale object
   };
 
 
@@ -370,9 +368,9 @@ export default function SalesPage() {
                     <TableCell className="text-right px-3 py-1.5 text-xs">
                       <Input
                         type="number"
-                        value={item.qty.toString()} // Ensure value is string for controlled input
+                        value={item.qty.toString()}
                         onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
-                        min={0} // Allow 0 for removal indication
+                        min={0} 
                         max={item.stock}
                         className="h-7 w-16 text-xs text-right tabular-nums"
                       />
@@ -481,9 +479,9 @@ export default function SalesPage() {
                 size="lg" 
                 className="w-full bg-green-600 hover:bg-green-700 text-white" 
                 onClick={handleSaveSale}
-                disabled={addSaleMutation.isPending || cartItems.length === 0 || !selectedCustomerId || currentAmountReceived < totalAmount}
+                disabled={addSaleMutation.isPending || totalItems === 0 || !selectedCustomerId || currentAmountReceived < totalAmount}
               >
-                {addSaleMutation.isPending ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save & Print Bill [Ctrl+P]</>}
+                {addSaleMutation.isPending ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save &amp; Print Bill [Ctrl+P]</>}
               </Button>
               <div className="grid grid-cols-2 gap-2 w-full">
                 <Button variant="outline" className="text-xs h-9" onClick={handlePartialPay}>
@@ -508,3 +506,4 @@ export default function SalesPage() {
     </div>
   );
 }
+
