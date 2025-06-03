@@ -1,10 +1,21 @@
-import type { LucideIcon } from 'lucide-react';
-import { LayoutDashboard, ShoppingCart, Boxes, Users, Wrench, CreditCard, Settings } from 'lucide-react';
+
+import type { LucideProps } from 'lucide-react';
+import type { ForwardRefExoticComponent, RefAttributes } from 'react';
+
+// Define a type for the icon name string
+export type IconName = 
+  | 'LayoutDashboard' 
+  | 'ShoppingCart' 
+  | 'Boxes' 
+  | 'Users' 
+  | 'Wrench' 
+  | 'CreditCard' 
+  | 'Settings';
 
 export interface NavItem {
   title: string;
   href: string;
-  icon: LucideIcon;
+  icon: IconName; // Changed from LucideIcon to IconName (string)
   label?: string;
   disabled?: boolean;
   external?: boolean;
@@ -15,32 +26,32 @@ export const navItems: NavItem[] = [
   {
     title: 'Dashboard',
     href: '/',
-    icon: LayoutDashboard,
+    icon: 'LayoutDashboard',
   },
   {
     title: 'Sales',
     href: '/sales',
-    icon: ShoppingCart,
+    icon: 'ShoppingCart',
   },
   {
     title: 'Inventory',
     href: '/inventory',
-    icon: Boxes,
+    icon: 'Boxes',
   },
   {
     title: 'Customers',
     href: '/customers',
-    icon: Users,
+    icon: 'Users',
   },
   {
     title: 'Services',
     href: '/services',
-    icon: Wrench,
+    icon: 'Wrench',
   },
   {
     title: 'Payments',
     href: '/payments',
-    icon: CreditCard,
+    icon: 'CreditCard',
   },
 ];
 
@@ -48,7 +59,7 @@ export const bottomNavItems: NavItem[] = [
     {
         title: 'Settings',
         href: '/settings',
-        icon: Settings,
-        disabled: true, // Placeholder
+        icon: 'Settings',
+        disabled: true, 
     }
 ]

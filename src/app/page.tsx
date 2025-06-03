@@ -1,24 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DollarSign, ShoppingBag, Users, BarChart3 } from "lucide-react";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Legend } from "recharts";
-
-const chartData = [
-  { month: "January", sales: Math.floor(Math.random() * 5000) + 1000 },
-  { month: "February", sales: Math.floor(Math.random() * 5000) + 1000 },
-  { month: "March", sales: Math.floor(Math.random() * 5000) + 1000 },
-  { month: "April", sales: Math.floor(Math.random() * 5000) + 1000 },
-  { month: "May", sales: Math.floor(Math.random() * 5000) + 1000 },
-  { month: "June", sales: Math.floor(Math.random() * 5000) + 1000 },
-];
-
-const chartConfig = {
-  sales: {
-    label: "Sales",
-    color: "hsl(var(--primary))",
-  },
-};
-
+import { SalesOverviewChart } from '@/components/charts/sales-overview-chart';
 
 export default function DashboardPage() {
   return (
@@ -69,26 +51,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Sales Overview</CardTitle>
-            <CardDescription>Monthly sales performance.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={chartConfig} className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis tickLine={false} axisLine={false} tickMargin={8} />
-                  <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-                  <Legend content={<ChartLegendContent />} />
-                  <Bar dataKey="sales" fill="var(--color-sales)" radius={4} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+        <SalesOverviewChart />
         <Card>
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>

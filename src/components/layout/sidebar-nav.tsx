@@ -1,14 +1,37 @@
+
 "use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { NavItem } from "@/config/nav";
+import type { NavItem, IconName } from "@/config/nav";
 import { cn } from "@/lib/utils";
 import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
 } from "@/components/ui/sidebar";
+import { 
+  LayoutDashboard, 
+  ShoppingCart, 
+  Boxes, 
+  Users, 
+  Wrench, 
+  CreditCard, 
+  Settings,
+  type LucideIcon
+} from 'lucide-react';
+import type { ForwardRefExoticComponent, RefAttributes } from 'react';
+
+// Map icon names to actual components
+const iconMap: Record<IconName, LucideIcon> = {
+  LayoutDashboard,
+  ShoppingCart,
+  Boxes,
+  Users,
+  Wrench,
+  CreditCard,
+  Settings,
+};
 
 interface SidebarNavProps {
   items: NavItem[];
@@ -24,11 +47,11 @@ export function SidebarNav({ items }: SidebarNavProps) {
   return (
     <SidebarMenu>
       {items.map((item, index) => {
-        const Icon = item.icon;
+        const IconComponent = iconMap[item.icon];
         const isActive = item.href === "/" ? pathname === item.href : pathname.startsWith(item.href);
         
         return (
-          item.href && (
+          item.href && IconComponent && (
             <SidebarMenuItem key={index}>
               <Link href={item.disabled ? "/" : item.href} legacyBehavior passHref>
                 <SidebarMenuButton
@@ -43,7 +66,7 @@ export function SidebarNav({ items }: SidebarNavProps) {
                   tooltip={item.title}
                 >
                   <a> {/* Anchor tag is child of SidebarMenuButton when asChild is true and legacyBehavior is used */}
-                    <Icon className="mr-2 h-4 w-4 flex-shrink-0" />
+                    <IconComponent className="mr-2 h-4 w-4 flex-shrink-0" />
                     <span className="truncate">{item.title}</span>
                     {item.label && (
                       <span
