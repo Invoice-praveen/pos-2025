@@ -21,9 +21,9 @@ export interface Customer {
   avatar?: string; // URL to avatar
   hint?: string;
   totalSpent?: number;
-  lastPurchase?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  lastPurchase?: string; // ISO Date string
+  createdAt?: string; // ISO Date string
+  updatedAt?: string; // ISO Date string
 }
 
 export interface Service {
@@ -53,6 +53,7 @@ export interface SaleItem {
 export interface SalePayment {
   mode: string;
   amount: number;
+  paymentDate?: string; // ISO Date string, optional for existing data
 }
 
 export interface Sale {
@@ -71,11 +72,11 @@ export interface Sale {
   amountReceived: number;
   paymentMode: string; // Primary payment mode if single, or summary
   changeGiven: number;
-  saleDate: string; 
-  status?: 'Completed' | 'PartiallyPaid' | 'Pending' | 'Returned'; // Added 'Returned'
+  saleDate: string; // ISO Date string
+  status: 'Completed' | 'PartiallyPaid' | 'PendingPayment' | 'Returned' | 'Cancelled' | 'Unknown';
   notes?: string;
-  createdAt?: string;    
-  updatedAt?: string;    
+  createdAt?: string; // ISO Date string   
+  updatedAt?: string; // ISO Date string   
 }
 
 // Type for cart items, which might include temporary client-side state

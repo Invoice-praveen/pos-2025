@@ -65,6 +65,7 @@ export default function SalesPage() {
     queryFn: getCustomers,
     onSuccess: (data) => {
       if (data && data.length > 0 && !selectedCustomerId) {
+        // Set default customer if not already set and customers are available
         setSelectedCustomerId(data[0].id!);
       }
     }
@@ -75,11 +76,12 @@ export default function SalesPage() {
     onSuccess: (savedSale) => {
       queryClient.invalidateQueries({ queryKey: ['products'] }); 
       queryClient.invalidateQueries({ queryKey: ['salesHistory'] }); 
-      toast({ title: "Success", description: `Sale #${savedSale.id?.substring(0,6) || 'N/A'} saved successfully.` });
+      queryClient.invalidateQueries({ queryKey: ['customers']}); // Invalidate customers to update totalSpent
+      toast({ title: "Success", description: `Sale #${savedSale.id?.substring(0,6) || 'N/A'} (Status: ${savedSale.status}) saved successfully.` });
       resetBill();
     },
     onError: (error) => {
-      console.log(error)
+      console.error("Failed to save sale:", error)
       toast({ variant: "destructive", title: "Error", description: `Failed to save sale: ${error.message}` });
     },
   });
@@ -171,12 +173,12 @@ export default function SalesPage() {
   const balanceDue = Math.max(0, totalAmount - currentAmountReceived);
 
   React.useEffect(() => {
-    if (totalAmount > 0) {
+    if (totalAmount > 0 && amountReceived === "" ) { // Only auto-fill if amountReceived is empty and total is > 0
       setAmountReceived(totalAmount.toFixed(2));
-    } else {
-      setAmountReceived("");
+    } else if (totalAmount === 0) {
+      setAmountReceived(""); // Clear if total is zero
     }
-  }, [totalAmount]);
+  }, [totalAmount, amountReceived]); // Rerun if amountReceived also changes to avoid loop
 
   const resetBill = () => {
     setCartItems([]);
@@ -194,10 +196,6 @@ export default function SalesPage() {
   const handleSaveSale = () => {
     if (totalItems === 0) {
       toast({ variant: "destructive", title: "Empty Bill", description: "Cannot save a bill with no billable items." });
-      return;
-    }
-    if (currentAmountReceived < totalAmount) {
-      toast({ variant: "destructive", title: "Insufficient Payment", description: "Amount received is less than total amount. Use Partial Pay if intended." });
       return;
     }
     if (!selectedCustomerId) {
@@ -226,7 +224,8 @@ export default function SalesPage() {
         return;
     }
 
-    const saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'saleDate'> = {
+    // Status will be set in saleService based on amountReceived vs totalAmount
+    const saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'saleDate' | 'status'> = {
       customerId: selectedCustomerId,
       customerName: selectedCustomer?.name || "Unknown Customer",
       items: saleItems,
@@ -237,17 +236,34 @@ export default function SalesPage() {
       totalAmount,
       totalItems, 
       totalQuantity, 
-      payments: [{ mode: selectedPaymentMode, amount: currentAmountReceived }], 
+      payments: [{ mode: selectedPaymentMode, amount: currentAmountReceived, paymentDate: new Date().toISOString() }], 
       amountReceived: currentAmountReceived,
       paymentMode: selectedPaymentMode, 
       changeGiven: changeToReturn,
-      status: 'Completed',
+      // status: determined by service
     };
     addSaleMutation.mutate(saleData);
   };
   
   const handlePartialPay = () => {
-    toast({title: "Not Implemented", description: "Partial Pay functionality is not yet implemented."});
+     if (totalItems === 0) {
+      toast({ variant: "destructive", title: "Empty Bill", description: "Add items to the bill first." });
+      return;
+    }
+    if (!selectedCustomerId) {
+      toast({ variant: "destructive", title: "No Customer", description: "Please select a customer." });
+      return;
+    }
+     if (currentAmountReceived <= 0) {
+      toast({ variant: "destructive", title: "No Payment Received", description: "Enter amount received for partial payment." });
+      return;
+    }
+     if (currentAmountReceived >= totalAmount) {
+      toast({ variant: "outline", title: "Full Payment", description: "Amount received covers total. Use 'Save & Print' for full payment." });
+      return;
+    }
+    // Save with partial payment status
+    handleSaveSale(); 
   };
 
   const handleMultiPay = () => {
@@ -409,6 +425,7 @@ export default function SalesPage() {
                         {customer.name} {customer.phone ? `(${customer.phone})` : ''}
                       </SelectItem>
                     ))}
+                    {customers.length === 0 && <SelectItem value="none" disabled className="text-xs">No customers found</SelectItem>}
                   </SelectContent>
                 </Select>
               )}
@@ -479,12 +496,12 @@ export default function SalesPage() {
                 size="lg" 
                 className="w-full bg-green-600 hover:bg-green-700 text-white" 
                 onClick={handleSaveSale}
-                disabled={addSaleMutation.isPending || totalItems === 0 || !selectedCustomerId || currentAmountReceived < totalAmount}
+                disabled={addSaleMutation.isPending || totalItems === 0 || !selectedCustomerId}
               >
                 {addSaleMutation.isPending ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save &amp; Print Bill [Ctrl+P]</>}
               </Button>
               <div className="grid grid-cols-2 gap-2 w-full">
-                <Button variant="outline" className="text-xs h-9" onClick={handlePartialPay}>
+                <Button variant="outline" className="text-xs h-9" onClick={handlePartialPay} disabled={currentAmountReceived <=0 || currentAmountReceived >= totalAmount || totalItems === 0 || !selectedCustomerId}>
                    <PieChartIcon className="mr-2 h-3 w-3"/> Partial Pay [Ctrl+B]
                 </Button>
                 <Button variant="outline" className="text-xs h-9" onClick={handleMultiPay}>
@@ -506,3 +523,4 @@ export default function SalesPage() {
     </div>
   );
 }
+

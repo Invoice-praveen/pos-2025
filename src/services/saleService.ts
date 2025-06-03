@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import type { Sale, SaleItem } from '@/types';
+import type { Sale, SaleItem, SalePayment } from '@/types';
 import { 
   collection, 
   addDoc, 
@@ -13,8 +13,9 @@ import {
   query,
   orderBy,
   Timestamp,
-  increment,
-  updateDoc, // Added updateDoc
+  increment, 
+  updateDoc,
+  where
 } from 'firebase/firestore';
 
 const salesCollectionRef = collection(db, 'sales');
@@ -36,7 +37,7 @@ const convertTimestampToString = (timestampField: unknown): string | undefined =
 };
 
 
-export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'saleDate'>): Promise<Sale> {
+export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updatedAt' | 'saleDate' | 'status'>): Promise<Sale> {
   try {
     const batch = writeBatch(db);
     const newSaleRef = doc(salesCollectionRef); 
@@ -72,6 +73,20 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
         throw new Error("No items with quantity greater than 0 to save.");
     }
     
+    let saleStatus: Sale['status'] = 'Unknown';
+    if (saleData.totalAmount <= 0 && cleanedSaleItems.length === 0) { // Handles zero total, zero items as completed (e.g. free service)
+      saleStatus = 'Completed';
+    } else if (saleData.amountReceived >= saleData.totalAmount) {
+      saleStatus = 'Completed';
+    } else if (saleData.amountReceived > 0 && saleData.amountReceived < saleData.totalAmount) {
+      saleStatus = 'PartiallyPaid';
+    } else if (saleData.amountReceived === 0 && saleData.totalAmount > 0) {
+      saleStatus = 'PendingPayment';
+    } else {
+      saleStatus = 'PendingPayment'; // Default for edge cases or zero total amount with items.
+    }
+
+
     const saleDocumentData = {
         customerId: saleData.customerId,
         customerName: saleData.customerName,
@@ -83,11 +98,15 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
         totalAmount: saleData.totalAmount,
         totalItems: cleanedSaleItems.length, 
         totalQuantity: cleanedSaleItems.reduce((sum, item) => sum + item.qty, 0), 
-        payments: saleData.payments.map(p => ({ mode: p.mode, amount: Number(p.amount) })),
+        payments: saleData.payments.map(p => ({ 
+          mode: p.mode, 
+          amount: Number(p.amount),
+          paymentDate: new Date().toISOString() // Add payment date for new payments
+        })),
         amountReceived: saleData.amountReceived,
         paymentMode: saleData.paymentMode,
         changeGiven: saleData.changeGiven,
-        status: saleData.status,
+        status: saleStatus,
         notes: saleData.notes || '',
         saleDate: serverTimestamp(),
         createdAt: serverTimestamp(),
@@ -109,6 +128,17 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
         stock: increment(-item.qty) 
       });
     }
+    
+    // Update customer's totalSpent and lastPurchase
+    if (saleData.customerId && saleData.totalAmount > 0) {
+        const customerRef = doc(db, 'customers', saleData.customerId);
+        batch.update(customerRef, {
+            totalSpent: increment(saleData.totalAmount),
+            lastPurchase: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+    }
+
 
     await batch.commit();
 
@@ -125,11 +155,11 @@ export async function addSale(saleData: Omit<Sale, 'id' | 'createdAt' | 'updated
       totalAmount: saleData.totalAmount,
       totalItems: cleanedSaleItems.length,
       totalQuantity: cleanedSaleItems.reduce((sum, item) => sum + item.qty, 0),
-      payments: saleData.payments,
+      payments: saleDocumentData.payments, // Return payments with added date
       amountReceived: saleData.amountReceived,
       paymentMode: saleData.paymentMode,
       changeGiven: saleData.changeGiven,
-      status: saleData.status,
+      status: saleStatus,
       notes: saleData.notes,
       saleDate: nowISO, 
       createdAt: nowISO, 
@@ -168,17 +198,51 @@ export async function getSales(): Promise<Sale[]> {
       totalAmount: data.totalAmount,
       totalItems: data.totalItems,
       totalQuantity: data.totalQuantity,
-      payments: data.payments,
+      payments: data.payments as SalePayment[],
       amountReceived: data.amountReceived,
       paymentMode: data.paymentMode,
       changeGiven: data.changeGiven,
-      status: data.status,
+      status: data.status as Sale['status'] || 'Unknown',
       notes: data.notes,
       saleDate: convertTimestampToString(data.saleDate)!, 
       createdAt: convertTimestampToString(data.createdAt),
       updatedAt: convertTimestampToString(data.updatedAt),
     };
     return sale;
+  });
+}
+
+export async function getSalesByCustomerId(customerId: string): Promise<Sale[]> {
+  if (!customerId) {
+    console.warn("[saleService] getSalesByCustomerId: customerId is missing.");
+    return [];
+  }
+  const q = query(salesCollectionRef, where("customerId", "==", customerId), orderBy('saleDate', 'desc'));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(docSnapshot => {
+    const data = docSnapshot.data();
+    return {
+      id: docSnapshot.id,
+      customerId: data.customerId,
+      customerName: data.customerName,
+      items: data.items as SaleItem[],
+      subTotal: data.subTotal,
+      totalDiscount: data.totalDiscount,
+      totalTax: data.totalTax,
+      roundOff: data.roundOff,
+      totalAmount: data.totalAmount,
+      totalItems: data.totalItems,
+      totalQuantity: data.totalQuantity,
+      payments: data.payments as SalePayment[],
+      amountReceived: data.amountReceived,
+      paymentMode: data.paymentMode,
+      changeGiven: data.changeGiven,
+      status: data.status as Sale['status'] || 'Unknown',
+      notes: data.notes,
+      saleDate: convertTimestampToString(data.saleDate)!,
+      createdAt: convertTimestampToString(data.createdAt),
+      updatedAt: convertTimestampToString(data.updatedAt),
+    } as Sale;
   });
 }
 
@@ -226,4 +290,36 @@ export async function returnSale(saleId: string, itemsToReturn: SaleItem[]): Pro
     }
     throw new Error(errorMessage);
   }
+}
+
+// Placeholder for adding further payments to an existing sale
+export async function addPaymentToSale(
+  saleId: string, 
+  newPayment: SalePayment,
+  currentTotalAmount: number,
+  currentAmountReceived: number,
+  currentPayments: SalePayment[]
+): Promise<void> {
+  if (!saleId || !newPayment) {
+    throw new Error("Sale ID and new payment details are required.");
+  }
+
+  const saleRef = doc(db, 'sales', saleId);
+  
+  const updatedAmountReceived = currentAmountReceived + newPayment.amount;
+  const updatedPayments = [...currentPayments, { ...newPayment, paymentDate: new Date().toISOString() }];
+  
+  let newStatus: Sale['status'] = 'PartiallyPaid';
+  if (updatedAmountReceived >= currentTotalAmount) {
+    newStatus = 'Completed';
+  } else if (updatedAmountReceived <= 0) {
+    newStatus = 'PendingPayment';
+  }
+
+  await updateDoc(saleRef, {
+    payments: updatedPayments,
+    amountReceived: updatedAmountReceived,
+    status: newStatus,
+    updatedAt: serverTimestamp(),
+  });
 }

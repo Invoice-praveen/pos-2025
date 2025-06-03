@@ -36,6 +36,7 @@ import type { Customer } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from 'date-fns';
+import { CustomerSalesDialog } from '@/components/dialogs/customer-sales-dialog'; // Import the new dialog
 
 const customerSchema = z.object({
   name: z.string().min(1, "Customer name is required"),
@@ -55,6 +56,9 @@ export default function CustomersPage() {
   const [customerToEdit, setCustomerToEdit] = useState<Customer | null>(null);
   const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
   const [customerToDeleteId, setCustomerToDeleteId] = useState<string | null>(null);
+  const [isSalesHistoryDialogOpen, setIsSalesHistoryDialogOpen] = useState(false);
+  const [selectedCustomerForHistory, setSelectedCustomerForHistory] = useState<Customer | null>(null);
+
 
   const form = useForm<CustomerFormData>({
     resolver: zodResolver(customerSchema),
@@ -153,6 +157,11 @@ export default function CustomersPage() {
     if (customerToDeleteId) {
       deleteCustomerMutation.mutate(customerToDeleteId);
     }
+  };
+
+  const handleViewPurchaseHistory = (customer: Customer) => {
+    setSelectedCustomerForHistory(customer);
+    setIsSalesHistoryDialogOpen(true);
   };
   
   const getAvatarFallback = (name?: string | null) => {
@@ -279,6 +288,15 @@ export default function CustomersPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {selectedCustomerForHistory && (
+        <CustomerSalesDialog
+          open={isSalesHistoryDialogOpen}
+          onOpenChange={setIsSalesHistoryDialogOpen}
+          customerId={selectedCustomerForHistory.id!}
+          customerName={selectedCustomerForHistory.name}
+        />
+      )}
+
 
       <Card>
         <CardHeader>
@@ -346,10 +364,10 @@ export default function CustomersPage() {
                          <span className="text-muted-foreground">-</span>
                        )}
                     </TableCell>
-                    <TableCell className="text-right">${(customer.totalSpent || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right">₹{(customer.totalSpent || 0).toFixed(2)}</TableCell>
                     <TableCell>{customer.createdAt ? format(new Date(customer.createdAt), 'PP') : 'N/A'}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="mr-1" title="View Purchase History" disabled>
+                      <Button variant="ghost" size="icon" className="mr-1" title="View Purchase History" onClick={() => handleViewPurchaseHistory(customer)}>
                         <ShoppingBag className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" className="mr-1" title="Edit Customer" onClick={() => handleEditCustomer(customer)}>

@@ -8,9 +8,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, History, FileText, Printer, RotateCcw, Eye, ShoppingBag } from "lucide-react";
-import { getSales, returnSale } from '@/services/saleService';
-import type { Sale, SaleItem } from '@/types';
+import { AlertCircle, History, FileText, Printer, RotateCcw, Eye, ShoppingBag, CreditCard } from "lucide-react";
+import { getSales, returnSale, addPaymentToSale } from '@/services/saleService';
+import type { Sale, SaleItem, SalePayment } from '@/types';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -32,6 +32,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+
+const paymentModes = ["Cash", "UPI", "Card", "Other"]; // Re-use from sales page or centralize
 
 export default function SalesHistoryPage() {
   const { toast } = useToast();
@@ -41,6 +47,11 @@ export default function SalesHistoryPage() {
   const [selectedSaleForDetails, setSelectedSaleForDetails] = useState<Sale | null>(null);
   const [isReturnConfirmOpen, setIsReturnConfirmOpen] = useState(false);
   const [saleToReturn, setSaleToReturn] = useState<Sale | null>(null);
+  const [isAddPaymentDialogOpen, setIsAddPaymentDialogOpen] = useState(false);
+  const [saleForNewPayment, setSaleForNewPayment] = useState<Sale | null>(null);
+  const [newPaymentAmount, setNewPaymentAmount] = useState<string>("");
+  const [newPaymentMode, setNewPaymentMode] = useState<string>(paymentModes[0]);
+
 
   const { data: sales, isLoading, error: salesError, isError: isSalesError } = useQuery<Sale[], Error>({
     queryKey: ['salesHistory'],
@@ -51,10 +62,15 @@ export default function SalesHistoryPage() {
     mutationFn: (data: { saleId: string; items: SaleItem[] }) => returnSale(data.saleId, data.items),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['salesHistory'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] }); // To update stock if viewed elsewhere
+      queryClient.invalidateQueries({ queryKey: ['products'] }); 
+      queryClient.invalidateQueries({ queryKey: ['customers'] }); // Invalidate customers due to potential totalSpent changes indirectly
       toast({ title: "Success", description: `Sale ID: ${variables.saleId.substring(0,8)}... marked as Returned and stock updated.` });
       setIsReturnConfirmOpen(false);
       setSaleToReturn(null);
+      if (isDetailsDialogOpen && selectedSaleForDetails?.id === variables.saleId) { // Refresh details if open
+          const updatedSale = sales?.find(s => s.id === variables.saleId);
+          if (updatedSale) setSelectedSaleForDetails({...updatedSale, status: 'Returned'});
+      }
     },
     onError: (error: Error, variables) => {
       toast({ variant: "destructive", title: "Error", description: `Failed to return sale ${variables.saleId.substring(0,8)}...: ${error.message}` });
@@ -62,6 +78,32 @@ export default function SalesHistoryPage() {
       setSaleToReturn(null);
     },
   });
+  
+  const addPaymentMutation = useMutation({
+    mutationFn: (data: { 
+        saleId: string; 
+        payment: SalePayment; 
+        currentTotalAmount: number; 
+        currentAmountReceived: number; 
+        currentPayments: SalePayment[];
+    }) => addPaymentToSale(data.saleId, data.payment, data.currentTotalAmount, data.currentAmountReceived, data.currentPayments),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['salesHistory'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] }); // Invalidate customers due to potential totalSpent changes indirectly
+      toast({ title: "Success", description: `Payment added to Sale ID: ${variables.saleId.substring(0,8)}...` });
+      setIsAddPaymentDialogOpen(false);
+      setNewPaymentAmount("");
+      if (isDetailsDialogOpen && selectedSaleForDetails?.id === variables.saleId) { // Refresh details if open
+          // This is tricky, ideally refetch just this sale or optimistically update
+          // For now, user will see change on next dialog open or full list refresh
+          setIsDetailsDialogOpen(false); // Close and reopen to see fresh data
+      }
+    },
+    onError: (error: Error, variables) => {
+      toast({ variant: "destructive", title: "Error", description: `Failed to add payment to sale ${variables.saleId.substring(0,8)}...: ${error.message}` });
+    }
+  });
+
 
   const handleViewDetails = (sale: Sale) => {
     setSelectedSaleForDetails(sale);
@@ -87,27 +129,45 @@ export default function SalesHistoryPage() {
     }
   };
 
+  const handleOpenAddPaymentDialog = (sale: Sale) => {
+    setSaleForNewPayment(sale);
+    setNewPaymentAmount("");
+    setNewPaymentMode(paymentModes[0]);
+    setIsAddPaymentDialogOpen(true);
+  };
+
+  const handleConfirmAddPayment = () => {
+    if (!saleForNewPayment || !saleForNewPayment.id) return;
+    const amount = parseFloat(newPaymentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast({ variant: "destructive", title: "Invalid Amount", description: "Please enter a valid payment amount." });
+      return;
+    }
+    addPaymentMutation.mutate({
+      saleId: saleForNewPayment.id,
+      payment: { mode: newPaymentMode, amount },
+      currentTotalAmount: saleForNewPayment.totalAmount,
+      currentAmountReceived: saleForNewPayment.amountReceived,
+      currentPayments: saleForNewPayment.payments
+    });
+  };
+
+
   const getStatusVariant = (status?: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
-      case 'Completed':
-        return 'default'; 
-      case 'Pending':
-        return 'secondary';
-      case 'PartiallyPaid':
-        return 'outline';
-      case 'Cancelled':
-        return 'destructive';
-      case 'Returned':
-        return 'destructive'; // Or a specific color like orange/yellow
-      default:
-        return 'outline';
+      case 'Completed': return 'default'; 
+      case 'PendingPayment': return 'secondary';
+      case 'PartiallyPaid': return 'outline';
+      case 'Cancelled': return 'destructive';
+      case 'Returned': return 'destructive';
+      default: return 'outline';
     }
   };
   
-  const renderDetailRow = (label: string, value: string | number | ReactNode, isAmount = false) => (
+  const renderDetailRow = (label: string, value: string | number | ReactNode, isAmount = false, currency = "₹") => (
     <div className="flex justify-between py-1 text-sm">
       <span className="text-muted-foreground">{label}:</span>
-      <span className={isAmount ? 'font-semibold' : ''}>{isAmount && typeof value === 'number' ? `₹${value.toFixed(2)}` : value}</span>
+      <span className={isAmount ? 'font-semibold' : ''}>{isAmount && typeof value === 'number' ? `${currency}${value.toFixed(2)}` : value}</span>
     </div>
   );
 
@@ -174,7 +234,9 @@ export default function SalesHistoryPage() {
                         variant={getStatusVariant(sale.status)} 
                         className={
                             sale.status === 'Completed' ? 'bg-accent text-accent-foreground hover:bg-accent/90' : 
-                            sale.status === 'Returned' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''
+                            sale.status === 'Returned' || sale.status === 'Cancelled' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 
+                            sale.status === 'PendingPayment' ? 'bg-yellow-500 text-yellow-50 hover:bg-yellow-500/90' :
+                            sale.status === 'PartiallyPaid' ? 'bg-blue-500 text-blue-50 hover:bg-blue-500/90' : ''
                         }
                       >
                         {sale.status || 'Unknown'}
@@ -184,7 +246,7 @@ export default function SalesHistoryPage() {
                       <Button variant="ghost" size="icon" title="View Details" onClick={() => handleViewDetails(sale)}>
                         <Eye className="h-4 w-4" />
                       </Button>
-                       <Button variant="ghost" size="icon" title="Return Bill" onClick={() => handleOpenReturnDialog(sale)} disabled={sale.status === 'Returned'}>
+                       <Button variant="ghost" size="icon" title="Return Bill" onClick={() => handleOpenReturnDialog(sale)} disabled={sale.status === 'Returned' || sale.status === 'Cancelled'}>
                         <RotateCcw className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -214,7 +276,12 @@ export default function SalesHistoryPage() {
                 <CardContent className="text-sm space-y-1">
                   {renderDetailRow("Customer", selectedSaleForDetails.customerName)}
                   {renderDetailRow("Sale Date", format(new Date(selectedSaleForDetails.saleDate), 'PPpp'))}
-                  {renderDetailRow("Status", <Badge variant={getStatusVariant(selectedSaleForDetails.status)} className={selectedSaleForDetails.status === 'Completed' ? 'bg-accent text-accent-foreground' : selectedSaleForDetails.status === 'Returned' ? 'bg-destructive text-destructive-foreground' : ''}>{selectedSaleForDetails.status || 'Unknown'}</Badge>)}
+                  {renderDetailRow("Status", <Badge variant={getStatusVariant(selectedSaleForDetails.status)} className={
+                      selectedSaleForDetails.status === 'Completed' ? 'bg-accent text-accent-foreground' : 
+                      selectedSaleForDetails.status === 'Returned' || selectedSaleForDetails.status === 'Cancelled' ? 'bg-destructive text-destructive-foreground' : 
+                      selectedSaleForDetails.status === 'PendingPayment' ? 'bg-yellow-500 text-yellow-50' :
+                      selectedSaleForDetails.status === 'PartiallyPaid' ? 'bg-blue-500 text-blue-50' : ''
+                    }>{selectedSaleForDetails.status || 'Unknown'}</Badge>)}
                 </CardContent>
               </Card>
 
@@ -250,13 +317,25 @@ export default function SalesHistoryPage() {
                   <Separator className="my-2" />
                   {renderDetailRow("Grand Total", selectedSaleForDetails.totalAmount, true)}
                   <Separator className="my-2" />
+                   <Label className="text-xs text-muted-foreground">Payments Made:</Label>
                   {selectedSaleForDetails.payments.map((p, i) => (
-                     renderDetailRow(`Paid (${p.mode})`, p.amount, true)
+                     renderDetailRow(`${p.mode} (${p.paymentDate ? format(new Date(p.paymentDate), 'PPp') : 'N/A'})`, p.amount, true)
                   ))}
-                  {renderDetailRow("Amount Received", selectedSaleForDetails.amountReceived, true)}
+                   <Separator className="my-1" />
+                  {renderDetailRow("Total Amount Received", selectedSaleForDetails.amountReceived, true)}
+                  {selectedSaleForDetails.amountReceived < selectedSaleForDetails.totalAmount && selectedSaleForDetails.status !== 'Returned' && selectedSaleForDetails.status !== 'Cancelled' && (
+                     renderDetailRow("Balance Due", selectedSaleForDetails.totalAmount - selectedSaleForDetails.amountReceived, true)
+                  )}
                   {selectedSaleForDetails.changeGiven > 0 && renderDetailRow("Change Given", selectedSaleForDetails.changeGiven, true)}
                   {selectedSaleForDetails.notes && renderDetailRow("Notes", selectedSaleForDetails.notes)}
                 </CardContent>
+                 {(selectedSaleForDetails.status === 'PendingPayment' || selectedSaleForDetails.status === 'PartiallyPaid') && (
+                    <CardFooter>
+                        <Button onClick={() => handleOpenAddPaymentDialog(selectedSaleForDetails)} className="w-full">
+                            <CreditCard className="mr-2 h-4 w-4" /> Add Payment
+                        </Button>
+                    </CardFooter>
+                )}
               </Card>
             </div>
           )}
@@ -291,6 +370,50 @@ export default function SalesHistoryPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add Payment Dialog */}
+      <Dialog open={isAddPaymentDialogOpen} onOpenChange={setIsAddPaymentDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+                <DialogTitle>Add Payment for Sale ID: {saleForNewPayment?.id?.substring(0,8)}...</DialogTitle>
+                <DialogDescription>
+                    Current amount due: ₹{(saleForNewPayment?.totalAmount || 0) - (saleForNewPayment?.amountReceived || 0) > 0 ? ((saleForNewPayment?.totalAmount || 0) - (saleForNewPayment?.amountReceived || 0)).toFixed(2) : '0.00'}
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="paymentAmount" className="text-right col-span-1">Amount</Label>
+                    <Input 
+                        id="paymentAmount" 
+                        type="number" 
+                        value={newPaymentAmount}
+                        onChange={(e) => setNewPaymentAmount(e.target.value)}
+                        placeholder="0.00" 
+                        className="col-span-3" 
+                    />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="paymentModeAdd" className="text-right col-span-1">Mode</Label>
+                    <Select value={newPaymentMode} onValueChange={setNewPaymentMode}>
+                        <SelectTrigger id="paymentModeAdd" className="col-span-3">
+                            <SelectValue placeholder="Select mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {paymentModes.map(mode => (
+                                <SelectItem key={mode} value={mode}>{mode}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsAddPaymentDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleConfirmAddPayment} disabled={addPaymentMutation.isPending}>
+                    {addPaymentMutation.isPending ? "Adding..." : "Add Payment"}
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
