@@ -29,17 +29,26 @@ export interface Customer {
   updatedAt?: string; // ISO Date string
 }
 
+export type ServiceType = 'Paid' | 'Free' | 'Internal' | 'Warranty';
+export type ServiceStatus = 'Initiated' | 'Scheduled' | 'On Progress' | 'Pending Customer' | 'Completed' | 'Cancelled';
+
 export interface Service {
   id?: string;
   serviceName: string;
-  customer: string; // Could be customer ID or name
-  date: string; 
-  type: 'Paid' | 'Free' | 'Internal' | 'Warranty';
-  status: 'Pending' | 'Scheduled' | 'Completed' | 'Cancelled';
-  cost: number;
-  createdAt?: string;
-  updatedAt?: string;
+  customerId: string; // ID of the customer
+  customerName: string; // Denormalized for display
+  description?: string;
+  serviceType: ServiceType;
+  status: ServiceStatus;
+  cost?: number;
+  // assignedTo?: string; // Consider adding later if needed
+  serviceDate: string; // ISO Date string - when the service was requested/logged or scheduled
+  completionDate?: string; // ISO Date string - when completed
+  notes?: string;
+  createdAt?: string; // ISO Date string
+  updatedAt?: string; // ISO Date string
 }
+
 
 export interface SaleItem {
   productId: string;
@@ -69,8 +78,6 @@ export interface Sale {
   subTotal: number; // Sum of (priceUnit * qty) for all items BEFORE item discounts and taxes
   totalItemDiscount: number; // Sum of all item-level discounts
   totalTax: number; // Sum of all item-level taxes
-  // Removed totalDiscount (from bill level), using totalItemDiscount now
-  // Removed bill level tax, using totalTax (sum of item taxes)
   roundOff: number;
   totalAmount: number; // subTotal - totalItemDiscount + totalTax + roundOff
   totalItems: number;

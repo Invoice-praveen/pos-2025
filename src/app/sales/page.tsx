@@ -390,7 +390,7 @@ export default function SalesPage() {
       </div>
 
       <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
-        <div className="lg:col-span-2 bg-background shadow-sm rounded-lg overflow-hidden flex flex-col">
+        <div className="lg:col-span-2 bg-background shadow-sm rounded-lg overflow-auto flex flex-col">
           <div className="overflow-y-auto flex-grow">
             <Table className="min-w-full">
               <TableHeader>
