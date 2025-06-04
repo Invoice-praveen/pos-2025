@@ -137,6 +137,7 @@ export interface PurchaseItem {
   totalCost: number; // qty * costPriceUnit
 }
 
+export type PurchaseStatus = 'Draft' | 'Ordered' | 'Partially Received' | 'Completed' | 'Cancelled';
 export type PurchasePaymentStatus = 'Unpaid' | 'PartiallyPaid' | 'Paid';
 
 export interface Purchase {
@@ -153,8 +154,49 @@ export interface Purchase {
   totalAmount: number; // subTotal + shippingCost + otherCharges
   amountPaid: number;
   paymentStatus: PurchasePaymentStatus;
+  status: PurchaseStatus;
   // Consider adding payments array similar to SalePayment if tracking multiple payments
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+// ----- Expense Module Types -----
+export const expenseCategories = [
+  "Rent", "Utilities", "Salaries", "Marketing", "Supplies", "Maintenance", 
+  "Travel", "Software", "Bank Charges", "Office Expenses", "Other"
+] as const; // `as const` makes it a readonly tuple for better type inference
+
+export type ExpenseCategory = typeof expenseCategories[number];
+
+export interface Expense {
+  id?: string;
+  expenseDate: string; // ISO Date string
+  category: ExpenseCategory;
+  amount: number;
+  payee?: string; // Vendor or person paid
+  description?: string;
+  notes?: string; // Internal notes
+  createdAt?: string; // ISO Date string
+  updatedAt?: string; // ISO Date string
+}
+
+// ----- Voucher Module Types -----
+export const voucherTypes = ["Credit Note", "Debit Note", "Journal Voucher", "Payment Voucher", "Receipt Voucher"] as const;
+export type VoucherType = typeof voucherTypes[number];
+
+export interface FinancialVoucher {
+  id?: string;
+  voucherDate: string; // ISO Date string
+  voucherType: VoucherType;
+  referenceNo?: string;
+  partyType?: 'Customer' | 'Supplier' | 'Employee' | 'Other';
+  partyId?: string; // ID of customer, supplier, etc.
+  partyName?: string; // Denormalized name
+  amount: number;
+  description: string; // Reason for the voucher
+  relatedTransactionId?: string; // e.g., Sale ID for a credit note
+  notes?: string;
+  createdAt?: string; // ISO Date string
+  updatedAt?: string; // ISO Date string
 }

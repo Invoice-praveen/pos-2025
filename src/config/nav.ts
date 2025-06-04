@@ -13,7 +13,9 @@ export type IconName =
   | 'Settings'
   | 'History'
   | 'Truck' // For Suppliers/Purchases
-  | 'PackagePlus'; // For Purchases specifically
+  | 'PackagePlus' // For Purchases specifically
+  | 'Receipt' // For Expenses
+  | 'FileText'; // For Vouchers
 
 export interface NavItem {
   title: string;
@@ -47,12 +49,12 @@ export const navItems: NavItem[] = [
     icon: 'Boxes',
   },
   {
-    title: 'Purchases', // New Purchase link
+    title: 'Purchases',
     href: '/purchases',
     icon: 'PackagePlus', 
   },
   {
-    title: 'Suppliers', // New Suppliers link
+    title: 'Suppliers',
     href: '/suppliers',
     icon: 'Truck', 
   },
@@ -66,6 +68,16 @@ export const navItems: NavItem[] = [
     href: '/services',
     icon: 'Wrench',
     disabled: false,
+  },
+  {
+    title: 'Expenses', // New Expenses link
+    href: '/expenses',
+    icon: 'Receipt',
+  },
+  {
+    title: 'Vouchers', // New Vouchers link
+    href: '/vouchers',
+    icon: 'FileText',
   },
   {
     title: 'Payments',

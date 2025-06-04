@@ -19,8 +19,10 @@ import {
   CreditCard, 
   Settings,
   History,
-  Truck, // Added Truck icon
-  PackagePlus, // Added PackagePlus icon
+  Truck, 
+  PackagePlus,
+  Receipt, // Added Receipt icon
+  FileText, // Added FileText icon
   type LucideIcon
 } from 'lucide-react';
 import type { ForwardRefExoticComponent, RefAttributes } from 'react';
@@ -35,8 +37,10 @@ const iconMap: Record<IconName, LucideIcon> = {
   CreditCard,
   Settings,
   History,
-  Truck, // Mapped Truck icon
-  PackagePlus, // Mapped PackagePlus icon
+  Truck,
+  PackagePlus,
+  Receipt, // Mapped Receipt icon
+  FileText, // Mapped FileText icon
 };
 
 interface SidebarNavProps {
