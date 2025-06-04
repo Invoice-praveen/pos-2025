@@ -2,18 +2,21 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { DollarSign, ShoppingBag, Users, BarChart3, AlertCircle } from "lucide-react";
+import { DollarSign, ShoppingBag, Users, AlertCircle, Receipt, Wrench } from "lucide-react";
 import { SalesOverviewChart } from '@/components/charts/sales-overview-chart';
 import { useQuery } from '@tanstack/react-query';
 import { getSales } from '@/services/saleService';
 import { getCustomers } from '@/services/customerService';
-import type { Sale, Customer } from '@/types';
+import { getExpenses } from '@/services/expenseService';
+import { getServices } from '@/services/serviceService';
+import type { Sale, Customer, Expense, Service } from '@/types';
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMemo } from "react";
+import { format, parseISO, isSameMonth, startOfMonth } from 'date-fns';
 
 export default function DashboardPage() {
   const { data: sales, isLoading: isLoadingSales, error: salesError } = useQuery<Sale[], Error>({
-    queryKey: ['salesSummary'], // Different key from sales history to avoid conflicts if filters change
+    queryKey: ['salesSummary'], 
     queryFn: getSales,
   });
 
@@ -22,14 +25,25 @@ export default function DashboardPage() {
     queryFn: getCustomers,
   });
 
+  const { data: expenses, isLoading: isLoadingExpenses, error: expensesError } = useQuery<Expense[], Error>({
+    queryKey: ['expensesSummary'],
+    queryFn: getExpenses,
+  });
+
+  const { data: services, isLoading: isLoadingServices, error: servicesError } = useQuery<Service[], Error>({
+    queryKey: ['servicesSummary'],
+    queryFn: getServices,
+  });
+
   const dashboardStats = useMemo(() => {
     let totalRevenue = 0;
     let totalSalesCount = 0;
     let totalCustomers = 0;
+    let totalMonthlyExpenses = 0;
+    let pendingServicesCount = 0;
 
     if (sales) {
       sales.forEach(sale => {
-        // Consider only completed or paid sales for revenue and count
         if (sale.status === 'Completed' || sale.status === 'PartiallyPaid') {
           totalRevenue += sale.totalAmount;
           totalSalesCount++;
@@ -41,8 +55,28 @@ export default function DashboardPage() {
       totalCustomers = customers.length;
     }
 
-    return { totalRevenue, totalSalesCount, totalCustomers };
-  }, [sales, customers]);
+    if (expenses) {
+      const currentDate = new Date();
+      expenses.forEach(expense => {
+        try {
+            const expenseDate = parseISO(expense.expenseDate);
+            if (isSameMonth(expenseDate, currentDate)) {
+                totalMonthlyExpenses += expense.amount;
+            }
+        } catch (e) {
+            console.warn("Error parsing expense date for dashboard:", expense.expenseDate, e)
+        }
+      });
+    }
+
+    if (services) {
+      pendingServicesCount = services.filter(
+        service => service.status !== 'Completed' && service.status !== 'Cancelled'
+      ).length;
+    }
+
+    return { totalRevenue, totalSalesCount, totalCustomers, totalMonthlyExpenses, pendingServicesCount };
+  }, [sales, customers, expenses, services]);
 
   const renderStatCard = (title: string, value: string | number, subtext: string, icon: React.ReactNode, isLoading?: boolean, error?: Error | null) => (
     <Card>
@@ -99,46 +133,26 @@ export default function DashboardPage() {
           isLoadingCustomers,
           customersError
         )}
-        <Card> {/* Placeholder for Top Product */}
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Top Product</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">Product X</div>
-            <p className="text-xs text-muted-foreground">Most sold item this week</p>
-          </CardContent>
-        </Card>
+        {renderStatCard(
+          "Monthly Expenses",
+          `₹${dashboardStats.totalMonthlyExpenses.toFixed(2)}`,
+          `For ${format(new Date(), 'MMMM yyyy')}`,
+          <Receipt className="h-4 w-4 text-muted-foreground" />,
+          isLoadingExpenses,
+          expensesError
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <SalesOverviewChart /> {/* Remains with random data for now */}
-        <Card> {/* Placeholder for Recent Activity */}
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Latest transactions and updates.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3">
-              <li className="flex items-center justify-between text-sm">
-                <span>Sale #1203 - Product Y</span>
-                <span className="font-medium text-green-600">+$49.99</span>
-              </li>
-              <li className="flex items-center justify-between text-sm">
-                <span>New Customer: John Doe</span>
-                <span className="text-muted-foreground">2 hours ago</span>
-              </li>
-              <li className="flex items-center justify-between text-sm">
-                <span>Stock Update: Product Z (10 units added)</span>
-                <span className="text-muted-foreground">5 hours ago</span>
-              </li>
-              <li className="flex items-center justify-between text-sm">
-                <span>Sale #1202 - Product X</span>
-                <span className="font-medium text-green-600">+$99.00</span>
-              </li>
-            </ul>
-          </CardContent>
-        </Card>
+        <SalesOverviewChart />
+        {renderStatCard(
+            "Pending Services",
+            `${dashboardStats.pendingServicesCount}`,
+            "Services not yet completed",
+            <Wrench className="h-4 w-4 text-muted-foreground" />,
+            isLoadingServices,
+            servicesError
+        )}
       </div>
     </div>
   );
