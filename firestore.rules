@@ -1,9 +1,77 @@
+
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if
-          request.time < timestamp.date(2020, 11, 13);
+
+    // Helper function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
     }
+
+    // Customers collection
+    // Allow authenticated users to read, create, update, and delete customer records.
+    match /customers/{customerId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Products collection
+    // Allow authenticated users to manage product inventory.
+    match /products/{productId} {
+      allow read, write: if isAuthenticated();
+      // Consider more granular rules for stock updates if needed,
+      // e.g., only through specific functions or validated requests.
+    }
+
+    // Sales collection
+    // Allow authenticated users to record and view sales.
+    match /sales/{saleId} {
+      allow read, write: if isAuthenticated();
+      // Consider rules for updating sales, e.g., only status or payment details.
+    }
+
+    // Company Settings collection
+    // Allow authenticated users to read settings.
+    // Only allow authenticated users to write to the specific 'main' settings document.
+    match /company_settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && settingId == 'main';
+    }
+
+    // Suppliers collection
+    // Allow authenticated users to manage supplier information.
+    match /suppliers/{supplierId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Purchases collection
+    // Allow authenticated users to manage purchase orders.
+    match /purchases/{purchaseId} {
+      allow read, write: if isAuthenticated();
+      // Similar to products, consider rules for stock updates related to purchases.
+    }
+
+    // Expenses collection
+    // Allow authenticated users to log and manage expenses.
+    match /expenses/{expenseId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Services collection
+    // Allow authenticated users to manage service logs.
+    match /services/{serviceId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Financial Vouchers collection (Placeholder rules, as module is not fully implemented)
+    // Basic rules allowing authenticated users to manage vouchers.
+    match /financial_vouchers/{voucherId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Default deny for any unspecified paths
+    // match /{document=**} {
+    //   allow read, write: if false;
+    // }
   }
 }
