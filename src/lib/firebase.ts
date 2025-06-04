@@ -29,14 +29,13 @@ if (missingVars.length > 0) {
 }
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBPwKRkzy3DtQBQPAk0h8jSdDWsdwls_Ug",
-  authDomain: "todoapp-12c66.firebaseapp.com",
-  databaseURL: "https://todoapp-12c66.firebaseio.com",
-  projectId: "todoapp-12c66",
-  storageBucket: "todoapp-12c66.firebasestorage.app",
-  messagingSenderId: "174300667087",
-  appId: "1:174300667087:web:b6925a4793e94bd6506bba",
-  measurementId: "G-6GHEGV9MZF"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 
