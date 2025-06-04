@@ -577,13 +577,6 @@ export default function SalesPage() {
         </div>
       </div>
 
-      <div className="shrink-0 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-        {['Change Quantity [F2]', 'Item Discount [F3]', 'Remove Item [F4]', 'Bill Tax [F7]', 'Additional Charges [F8]', 'Bill Discount [F9]', 'Loyalty Points [F10]', 'Remarks [F12]'].map(label => (
-          <Button key={label} variant="outline" className="text-xs h-10 bg-background whitespace-normal text-center leading-tight justify-center" disabled>
-            {label}
-          </Button>
-        ))}
-      </div>
     </div>
   );
 }

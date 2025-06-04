@@ -2,92 +2,93 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: Arial, Helvetica, sans-serif;
-}
+/* Remove opinionated body font-family to allow Tailwind config to apply 'Inter' */
+/* body {
+  font-family: Arial, Helvetica, sans-serif; 
+} */
 
 @layer base {
   :root {
-    --background: 220 17% 95%; /* Light gray #F0F2F5 */
-    --foreground: 220 10% 20%; /* Dark gray for text */
+    --background: 0 0% 8%; /* Very Dark Gray/Black */
+    --foreground: 0 0% 95%; /* Off-White */
 
-    --card: 0 0% 100%; /* White cards for contrast on light gray bg */
-    --card-foreground: 220 10% 20%;
+    --card: 0 0% 12%; /* Darker Gray for Cards */
+    --card-foreground: 0 0% 95%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 10% 20%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 95%;
 
-    --primary: 231 48% 48%; /* Strong Blue #3F51B5 */
-    --primary-foreground: 0 0% 98%; /* White text on primary */
+    --primary: 0 80% 55%; /* Vibrant Red */
+    --primary-foreground: 0 0% 98%; /* Light Gray/White for text on primary */
 
-    --secondary: 220 15% 88%; /* Slightly darker gray than background for secondary elements */
-    --secondary-foreground: 220 10% 20%; /* Dark text on secondary */
+    --secondary: 0 0% 18%; /* Dark Gray for secondary elements */
+    --secondary-foreground: 0 0% 80%; /* Light Gray text on secondary */
 
-    --muted: 220 15% 80%; /* Muted gray */
-    --muted-foreground: 220 10% 45%; /* Darker muted text */
+    --muted: 0 0% 22%; /* Muted Dark Gray */
+    --muted-foreground: 0 0% 60%; /* Darker Muted Text */
 
-    --accent: 122 39% 49%; /* Green #4CAF50 */
-    --accent-foreground: 0 0% 98%; /* White text on accent */
+    --accent: 0 70% 50%; /* Strong Red for Accent */
+    --accent-foreground: 0 0% 98%; /* Light Gray/White text on accent */
 
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 80% 55%; /* Consistent Red for destructive actions */
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 15% 85%; /* Border color */
-    --input: 0 0% 100%; /* White input background */
-    --ring: 231 48% 48%; /* Primary color for rings */
+    --border: 0 0% 20%; /* Dark Gray Border */
+    --input: 0 0% 15%; /* Dark Input Background */
+    --ring: 0 80% 60%; /* Brighter Red for Rings */
 
-    --chart-1: 231 48% 48%; /* Primary Blue */
-    --chart-2: 122 39% 49%; /* Accent Green */
-    --chart-3: 220 10% 40%; /* Muted Foreground */
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 0 80% 55%; /* Primary Red */
+    --chart-2: 0 70% 50%; /* Accent Red */
+    --chart-3: 0 0% 60%; /* Muted Foreground Gray */
+    --chart-4: 43 74% 66%; /* Keeping some variety for charts, adjust if needed */
+    --chart-5: 27 87% 67%; /* Keeping some variety for charts, adjust if needed */
     --radius: 0.5rem;
 
-    /* Sidebar specific colors */
-    --sidebar-background: 230 20% 12%; /* Very Dark Desaturated Blue */
-    --sidebar-foreground: 210 20% 90%;   /* Light grayish text */
-    --sidebar-primary: 231 48% 48%;   /* Active item text/icon color: Primary blue */
-    --sidebar-primary-foreground: 0 0% 98%; /* Active item text on primary blue background */
-    --sidebar-accent: 230 20% 22%;    /* Hover item background: Slightly lighter dark blue */
-    --sidebar-accent-foreground: 0 0% 98%; /* Hover item text: White */
-    --sidebar-border: 230 20% 18%;    /* Border for sidebar elements */
-    --sidebar-ring: 231 48% 48%;      /* Ring color for focus, matching primary */
+    /* Sidebar specific colors - Red & Black Theme */
+    --sidebar-background: 0 0% 5%; /* Even Darker Black */
+    --sidebar-foreground: 0 0% 85%;   /* Light grayish text */
+    --sidebar-primary: 0 80% 55%;   /* Active item text/icon color: Primary Red */
+    --sidebar-primary-foreground: 0 0% 98%; /* Active item text on primary red background */
+    --sidebar-accent: 0 0% 10%;    /* Hover item background: Slightly lighter black */
+    --sidebar-accent-foreground: 0 0% 95%; /* Hover item text: White */
+    --sidebar-border: 0 0% 15%;    /* Border for sidebar elements */
+    --sidebar-ring: 0 80% 60%;      /* Ring color for focus, matching primary ring */
   }
 
   .dark {
-    /* Dark mode needs specific adjustments if enabled, for now defaults are kept */
-    --background: 220 10% 10%;
-    --foreground: 220 15% 90%;
-    --card: 220 10% 15%;
-    --card-foreground: 220 15% 90%;
-    --popover: 220 10% 15%;
-    --popover-foreground: 220 15% 90%;
-    --primary: 231 48% 55%;
-    --primary-foreground: 0 0% 10%;
-    --secondary: 220 10% 25%;
-    --secondary-foreground: 220 15% 90%;
-    --muted: 220 10% 25%;
-    --muted-foreground: 220 15% 60%;
-    --accent: 122 39% 55%;
-    --accent-foreground: 0 0% 10%;
-    --destructive: 0 70% 50%;
+    /* Ensure .dark class uses the same red and black theme */
+    --background: 0 0% 8%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 12%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 0 80% 55%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 80%;
+    --muted: 0 0% 22%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 0 70% 50%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 80% 55%;
     --destructive-foreground: 0 0% 98%;
-    --border: 220 10% 28%;
-    --input: 220 10% 20%;
-    --ring: 231 48% 55%;
+    --border: 0 0% 20%;
+    --input: 0 0% 15%;
+    --ring: 0 80% 60%;
 
-    --chart-1: 231 48% 55%;
-    --chart-2: 122 39% 55%;
-    --chart-3: 220 15% 70%;
+    --chart-1: 0 80% 55%;
+    --chart-2: 0 70% 50%;
+    --chart-3: 0 0% 60%;
     
-    --sidebar-background: 230 20% 8%;
-    --sidebar-foreground: 210 20% 80%;
-    --sidebar-primary: 231 48% 55%;
+    --sidebar-background: 0 0% 5%;
+    --sidebar-foreground: 0 0% 85%;
+    --sidebar-primary: 0 80% 55%;
     --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 230 20% 18%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 230 20% 12%;
-    --sidebar-ring: 231 48% 55%;
+    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 0 80% 60%;
   }
 }
 
