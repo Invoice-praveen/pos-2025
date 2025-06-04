@@ -2,6 +2,8 @@
 @media print {
   body * {
     visibility: hidden;
+    -webkit-print-color-adjust: exact !important; /* Chrome, Safari, Edge */
+    print-color-adjust: exact !important; /* Standard */
   }
   .invoice-container, .invoice-container * {
     visibility: visible;
@@ -12,17 +14,16 @@
     top: 0;
     width: 100%;
     margin: 0;
-    padding: 20px; /* Adjust padding for print */
+    padding: 15px; /* Reduced padding for print */
     box-shadow: none;
-    font-size: 10pt; /* Adjust font size for print */
+    font-size: 9pt; /* Slightly smaller font for print */
+    color: #374151; /* Equivalent to gray-700 for base text */
   }
   
-  /* Hide elements not part of the invoice itself */
   .no-print {
     display: none !important;
   }
 
-  /* Ensure table headers repeat on each page if table breaks */
   table thead {
     display: table-header-group;
   }
@@ -33,43 +34,36 @@
     display: table-footer-group;
   }
   
-  /* Avoid page breaks inside table rows or specific elements */
-  tr, td, th {
-    page-break-inside: avoid !important;
-  }
-  .invoice-container h1, .invoice-container h2, .invoice-container h3 {
-    page-break-after: avoid !important;
-  }
-  .invoice-container .flex {
+  tr, td, th, div, p, span, h1, h2, h3, h4, h5, h6 {
     page-break-inside: avoid !important;
   }
 
   @page {
-    size: A4; /* Or letter, legal, etc. */
-    margin: 0.5in; /* Adjust margins as needed */
+    size: A4; 
+    margin: 0.4in; /* Adjust margins for better fit */
   }
 
-  .bg-gray-800 { /* Tailwind class for dark header */
-    background-color: #2d3748 !important; /* Explicit color for print */
-    color: white !important;
-    -webkit-print-color-adjust: exact; /* Chrome, Safari, Edge */
-    print-color-adjust: exact; /* Standard */
-  }
-  .text-white {
-     color: white !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-   .bg-gray-50 {
-    background-color: #f9fafb !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-   .text-gray-800 { color: #2d3748 !important; }
-   .text-gray-700 { color: #4a5568 !important; }
-   .text-gray-600 { color: #718096 !important; }
-   .text-gray-500 { color: #a0aec0 !important; }
-   .border-gray-300 { border-color: #d1d5db !important; }
-   .border-gray-400 { border-color: #cbd5e0 !important; }
-   .text-red-500 { color: #ef4444 !important; }
+  /* Explicit color overrides for Tailwind classes if needed */
+  .print\:bg-gray-100 { background-color: #f3f4f6 !important; }
+  .print\:bg-gray-50 { background-color: #f9fafb !important; }
+  .print\:border-gray-200 { border-color: #e5e7eb !important; }
+
+  .text-gray-800 { color: #1f2937 !important; }
+  .text-gray-700 { color: #374151 !important; }
+  .text-gray-600 { color: #4b5563 !important; }
+  .text-gray-500 { color: #6b7280 !important; }
+  .text-red-500 { color: #ef4444 !important; }
+  .text-red-600 { color: #dc2626 !important; }
+  
+  .border-gray-100 { border-color: #f3f4f6 !important; }
+  .border-gray-200 { border-color: #e5e7eb !important; }
+  .border-gray-300 { border-color: #d1d5db !important; }
+  .border-gray-400 { border-color: #9ca3af !important; }
+
+  .font-bold { font-weight: 700 !important; }
+  .font-semibold { font-weight: 600 !important; }
+  .font-medium { font-weight: 500 !important; }
+
+  .uppercase { text-transform: uppercase !important; }
+  .tracking-wider { letter-spacing: 0.05em !important; }
 }
