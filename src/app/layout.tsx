@@ -4,9 +4,11 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import '@/components/invoice/invoice-template.css'; // Import print CSS globally
+import 'nprogress/nprogress.css'; // Import nprogress's base CSS
 import { Toaster } from "@/components/ui/toaster";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarInset } from "@/components/ui/sidebar";
 import { Header } from '@/components/layout/header';
+import { TopLoader } from '@/components/layout/top-loader'; // Import TopLoader
 import { SidebarNav } from '@/components/layout/sidebar-nav';
 import { navItems, bottomNavItems } from '@/config/nav';
 import Link from 'next/link';
@@ -52,8 +54,9 @@ export default function RootLayout({
       <body className="font-body antialiased min-h-screen bg-background text-foreground flex flex-col">
         <AuthProvider>
           <QueryClientProvider client={queryClient}>
+            <TopLoader /> {/* Add TopLoader here, early in the body */}
             <SidebarProvider defaultOpen>
-              <div className="flex min-h-screen">
+              <div className="flex min-h-screen w-full">
                 <Sidebar collapsible="icon" className="border-r">
                   <SidebarHeader className="p-4">
                      <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
