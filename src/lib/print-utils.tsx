@@ -1,4 +1,6 @@
 
+'use client';
+
 import type { Sale } from '@/types';
 import { renderToString } from 'react-dom/server';
 import { InvoiceTemplate } from '@/components/invoice/invoice-template';
@@ -17,84 +19,101 @@ const mockStoreDetails = {
 };
 
 export function triggerPrint(saleData: Sale) {
+  // 1. Open the window immediately
+  const printWindow = window.open('', '_blank', 'height=800,width=800,noopener,noreferrer');
+
+  if (!printWindow) {
+    alert("Could not open print window. Please check your browser's pop-up blocker settings.");
+    console.error("Failed to open print window. It might be blocked by a pop-up blocker.");
+    return;
+  }
+
+  // Render the invoice HTML string
   const invoiceHTML = renderToString(
     <InvoiceTemplate sale={saleData} storeDetails={mockStoreDetails} />
   );
 
-  const printWindow = window.open('', '_blank', 'height=800,width=800,noopener,noreferrer');
-  if (printWindow) {
-    printWindow.document.write('<html><head><title>Print Invoice</title>');
-    
-    // Attempt to load CSS. 
-    // It's generally better to inject CSS as a string for reliability in new windows.
-    // For simplicity with create-react-app or similar, linking to a public CSS file can work during dev.
-    // For production, ensure this CSS file is in your `public` directory or its content is bundled.
-    
-    // Fetch and inject CSS content directly
-    fetch('/components/invoice/invoice-template.css')
-      .then(response => response.text())
-      .then(css => {
-        const styleEl = printWindow.document.createElement('style');
-        styleEl.textContent = css;
-        printWindow.document.head.appendChild(styleEl);
-        
-        // Now that CSS is loaded, proceed with content and print
-        printWindow.document.body.innerHTML = invoiceHTML;
-        printWindow.document.close(); // Important for some browsers
+  // Write basic structure and title
+  printWindow.document.write('<html><head><title>Print Invoice</title></head><body></body></html>');
+  printWindow.document.close(); // Close the document stream opened by write()
 
-        waitForImagesAndPrint(printWindow);
-      })
-      .catch(err => {
-        console.error("Failed to load print CSS:", err);
-        // Proceed without custom styles if CSS fails, or handle error appropriately
-        printWindow.document.body.innerHTML = invoiceHTML;
-        printWindow.document.close();
-        waitForImagesAndPrint(printWindow);
-      });
+  // Inject content and styles
+  printWindow.document.body.innerHTML = invoiceHTML; // Place the rendered HTML into the body
 
-  } else {
-    alert("Could not open print window. Please check your browser's pop-up blocker settings.");
-  }
+  fetch('/components/invoice/invoice-template.css')
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`CSS fetch failed with status ${response.status}`);
+      }
+      return response.text();
+    })
+    .then(css => {
+      const styleEl = printWindow.document.createElement('style');
+      styleEl.textContent = css;
+      printWindow.document.head.appendChild(styleEl);
+      waitForImagesAndPrint(printWindow); // Proceed to print after CSS is applied
+    })
+    .catch(err => {
+      console.error("Failed to load print CSS:", err);
+      // Proceed without custom styles if CSS fails, or handle error appropriately
+      waitForImagesAndPrint(printWindow);
+    });
 }
 
 
 function waitForImagesAndPrint(printWindow: Window) {
-    const images = printWindow.document.images;
-    let loadedImages = 0;
+    const images = Array.from(printWindow.document.images);
+    let loadedImagesCount = 0;
     const totalImages = images.length;
 
     const proceedToPrint = () => {
-      printWindow.focus(); // Required for some browsers
-      printWindow.print();
-      // printWindow.close(); // Optional: close window after print dialog
+      // A small delay can sometimes help ensure all rendering is complete.
+      setTimeout(() => {
+        try {
+            if (printWindow && !printWindow.closed) {
+                printWindow.focus(); // Required for some browsers
+                printWindow.print();
+                // Consider closing the window after print dialog, or leave it open
+                // printWindow.close();
+            } else {
+                console.warn("Print window was closed before printing could occur.");
+            }
+        } catch (e) {
+            console.error("Error during print window focus or print call:", e);
+             alert("An error occurred while trying to print. Please try again.");
+        }
+      }, 150); // Slightly increased delay for rendering
     };
 
     if (totalImages === 0) {
-      // If no images, wait a bit for CSS to apply from previous step, then print
-      setTimeout(proceedToPrint, 500); 
-    } else {
-      Array.from(images).forEach(img => {
-        const imageLoadHandler = () => {
-          loadedImages++;
-          if (loadedImages === totalImages) {
-            setTimeout(proceedToPrint, 250); // Short delay after images for rendering
-          }
-        };
-        
-        img.onload = imageLoadHandler;
-        img.onerror = () => { 
-          loadedImages++; 
-          console.warn("Invoice image failed to load:", img.src);
-          if (loadedImages === totalImages) {
-            setTimeout(proceedToPrint, 250);
-          }
-        };
-        // Handle images that might already be cached and loaded
-        if (img.complete && img.naturalHeight !== 0) {
-            // If already complete, manually trigger the logic
-            imageLoadHandler();
-        }
-      });
+      proceedToPrint();
+      return;
     }
-}
 
+    images.forEach(img => {
+      const imageLoadOrErrorHandler = () => {
+        loadedImagesCount++;
+        if (loadedImagesCount === totalImages) {
+          proceedToPrint();
+        }
+      };
+
+      // Check if image is already loaded (e.g., from cache or broken link)
+      if (img.complete) {
+        if (img.naturalHeight === 0 && img.src) { // Check src to avoid warning for decorative images without src
+          console.warn("Invoice image might be broken or failed to load (naturalHeight is 0):", img.src);
+        }
+        imageLoadOrErrorHandler();
+      } else {
+        img.onload = imageLoadOrErrorHandler;
+        img.onerror = () => {
+          console.warn("Invoice image failed to load:", img.src);
+          imageLoadOrErrorHandler(); // Count as "processed" to not block printing
+        };
+      }
+    });
+
+    // Fallback: If some images never fire onload/onerror (e.g. network issues, very slow load)
+    // and they weren't 'complete' initially, we might need a timeout to proceed anyway.
+    // For now, relying on onload/onerror. If printing stalls, this is an area to investigate.
+}
