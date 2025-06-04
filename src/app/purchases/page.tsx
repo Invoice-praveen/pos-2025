@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Calendar } from "@/components/ui/calendar";
-import { Separator } from "@/components/ui/separator"; // Added import
+import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label"; // Added import
 import { Calendar as CalendarIcon, PlusCircle, Edit3, Trash2, PackagePlus, PackageSearch, Filter, AlertCircle, Search, ChevronsUpDown, Check, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
