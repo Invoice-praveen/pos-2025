@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Search, ChevronsUpDown, Check, Trash2, Save, Coins, PieChartIcon, Printer } from "lucide-react";
+import { PlusCircle, Search, ChevronsUpDown, Check, Trash2, Coins, PieChartIcon, Printer } from "lucide-react"; // Removed Save icon
 import {
   Popover,
   PopoverContent,
@@ -28,9 +28,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProducts } from '@/services/productService';
 import { getCustomers } from '@/services/customerService';
 import { addSale } from '@/services/saleService';
-import type { Product, Customer, SalesCartItem, Sale, SaleItem } from '@/types';
+import { getCompanySettings } from '@/services/settingsService'; // Import settings service
+import type { Product, Customer, SalesCartItem, Sale, SaleItem, CompanySettings } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { triggerPrint } from '@/lib/print-utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 
 const paymentModes = ["Cash", "UPI", "Card", "Other"];
@@ -63,16 +65,11 @@ export default function SalesPage() {
   });
 
   React.useEffect(() => {
-    if (products && products.length > 0) {
-      // console.log("[SalesPage] Products data from useQuery:", JSON.stringify(products, null, 2));
-    } else if (products && products.length === 0 && !isLoadingProducts) {
-        // console.log("[SalesPage] Products data from useQuery is an empty array and not loading.");
-    }
     if (productsError) {
       console.error("[SalesPage] Error fetching products:", productsError);
       toast({ variant: "destructive", title: "Error Loading Products", description: productsError.message });
     }
-  }, [products, isLoadingProducts, productsError, toast]);
+  }, [productsError, toast]);
 
 
   const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[], Error>({
@@ -85,17 +82,23 @@ export default function SalesPage() {
     }
   });
 
+  const { data: companySettings, isLoading: isLoadingSettings } = useQuery<CompanySettings | null, Error>({
+    queryKey: ['companySettings'],
+    queryFn: getCompanySettings,
+  });
+
   const addSaleMutation = useMutation({
     mutationFn: addSale,
-    onSuccess: (savedSale) => {
+    onSuccess: async (savedSale) => {
       queryClient.invalidateQueries({ queryKey: ['products'] }); 
       queryClient.invalidateQueries({ queryKey: ['salesHistory'] }); 
       queryClient.invalidateQueries({ queryKey: ['customers']}); 
       toast({ title: "Success", description: `Sale #${savedSale.id?.substring(0,6) || 'N/A'} (Status: ${savedSale.status}) saved successfully.` });
       
-      // Trigger print after successful save
-      if (savedSale.status === 'Completed' || savedSale.status === 'PartiallyPaid' || savedSale.totalAmount === 0) {
-        triggerPrint(savedSale);
+      if ((savedSale.status === 'Completed' || savedSale.status === 'PartiallyPaid' || savedSale.totalAmount === 0) && companySettings) {
+        await triggerPrint(savedSale, companySettings);
+      } else if (!companySettings) {
+        toast({variant: "outline", title: "Print Skipped", description: "Company settings not loaded, cannot print invoice."})
       }
       resetBill();
     },
@@ -107,8 +110,8 @@ export default function SalesPage() {
 
   const calculateItemFields = (item: SalesCartItem): SalesCartItem => {
     const itemSubtotal = item.priceUnit * item.qty;
-    // Tax is applied on the item subtotal (before item-level discount)
-    const taxApplied = itemSubtotal * (item.taxRate || 0);
+    const itemTaxableAmount = itemSubtotal; // Tax applied before item discount
+    const taxApplied = itemTaxableAmount * (item.taxRate || 0);
     const total = itemSubtotal - item.discount + taxApplied;
     return { ...item, taxApplied, total };
   };
@@ -142,10 +145,10 @@ export default function SalesPage() {
               unit: product.category === "Consumables" ? "pcs" : "unit", 
               priceUnit: product.price,
               taxRate: product.taxRate || 0,
-              discount: 0, // Initial discount is 0
+              discount: 0,
               stock: product.stock,
             };
-            const newItem = calculateItemFields(newItemBase as SalesCartItem); // Calculate tax and total
+            const newItem = calculateItemFields(newItemBase as SalesCartItem);
             return [...prevCartItems, newItem];
         }
         toast({variant: "destructive", title: "Error", description: "Product ID is missing."})
@@ -180,7 +183,6 @@ export default function SalesPage() {
           } else if (field === 'discount') {
             newDiscount = parseFloat(value as string);
             if (isNaN(newDiscount) || newDiscount < 0) newDiscount = 0;
-            // Prevent discount from exceeding item subtotal (price*qty)
             if (newDiscount > item.priceUnit * newQty) {
               newDiscount = item.priceUnit * newQty;
               toast({title: "Discount Limit", description: "Discount cannot exceed item subtotal.", variant: "outline"});
@@ -197,7 +199,7 @@ export default function SalesPage() {
 
   const subTotal = cartItems.reduce((sum, item) => sum + item.priceUnit * item.qty, 0);
   const totalItemDiscount = cartItems.reduce((sum, item) => sum + item.discount, 0); 
-  const totalTax = cartItems.reduce((sum, item) => sum + item.taxApplied, 0); 
+  const totalTax = cartItems.reduce((sum, item) => sum + (item.taxApplied || 0), 0); 
   const roundOff = 0.00; 
   const totalAmount = subTotal - totalItemDiscount + totalTax + roundOff;
   const totalItems = cartItems.filter(item => item.qty > 0).length;
@@ -253,7 +255,7 @@ export default function SalesPage() {
       .filter(cartItem => cartItem.qty > 0) 
       .map(cartItem => ({
         productId: cartItem.productId,
-        itemCode: cartItem.itemCode, // SKU
+        itemCode: cartItem.itemCode,
         itemName: cartItem.itemName,
         description: cartItem.description,
         qty: cartItem.qty,
@@ -292,6 +294,10 @@ export default function SalesPage() {
   const handleFullPay = () => {
     if (currentAmountReceived < totalAmount && totalAmount > 0) {
       toast({ variant: "destructive", title: "Insufficient Payment", description: "Amount received is less than total amount." });
+      return;
+    }
+    if (isLoadingSettings) {
+      toast({variant: "outline", title: "Please wait", description: "Loading company settings for printing."});
       return;
     }
     handleSaveSale(false);
@@ -354,8 +360,8 @@ export default function SalesPage() {
                       ).map((product) => (
                         <CommandItem
                           key={product.id}
-                          value={product.name} // CMDK uses this for its internal filtering/value
-                          onSelect={(currentValue) => { // currentValue here is product.name
+                          value={product.name} 
+                          onSelect={(currentValue) => { 
                             const productSelected = products.find(p => p.name.toLowerCase() === currentValue.toLowerCase());
                             if (productSelected) {
                               handleAddOrUpdateToCart(productSelected);
@@ -452,7 +458,7 @@ export default function SalesPage() {
                         className="h-7 w-16 text-xs text-right tabular-nums px-1"
                       />
                     </TableCell>
-                    <TableCell className="text-right px-2 py-1 text-xs">{item.taxApplied.toFixed(2)}</TableCell>
+                    <TableCell className="text-right px-2 py-1 text-xs">{(item.taxApplied || 0).toFixed(2)}</TableCell>
                     <TableCell className="text-right px-2 py-1 text-xs font-semibold">{item.total.toFixed(2)}</TableCell>
                     <TableCell className="text-right px-1 py-1">
                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleRemoveFromCart(item.productId)}>
@@ -472,7 +478,7 @@ export default function SalesPage() {
               <CardTitle className="text-base">Customer Details</CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4">
-              {isLoadingCustomers ? <div className="text-xs text-muted-foreground">Loading customers...</div> : (
+              {isLoadingCustomers ? <Skeleton className="h-9 w-full" /> : (
                 <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId} disabled={customers.length === 0}>
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue placeholder="Select customer" />
@@ -554,9 +560,9 @@ export default function SalesPage() {
                 size="lg" 
                 className="w-full bg-green-600 hover:bg-green-700 text-white" 
                 onClick={handleFullPay}
-                disabled={addSaleMutation.isPending || totalItems === 0 || !selectedCustomerId}
+                disabled={addSaleMutation.isPending || totalItems === 0 || !selectedCustomerId || isLoadingSettings}
               >
-                {addSaleMutation.isPending ? "Saving..." : <><Printer className="mr-2 h-4 w-4" /> Save & Print Bill [Ctrl+P]</>}
+                {addSaleMutation.isPending ? "Saving..." : (isLoadingSettings ? "Loading Settings..." : <><Printer className="mr-2 h-4 w-4" /> Save & Print Bill [Ctrl+P]</>)}
               </Button>
               <div className="grid grid-cols-2 gap-2 w-full">
                 <Button variant="outline" className="text-xs h-9" onClick={handlePartialPay} disabled={addSaleMutation.isPending || currentAmountReceived <=0 || currentAmountReceived >= totalAmount || totalItems === 0 || !selectedCustomerId}>

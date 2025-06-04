@@ -14,16 +14,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Printer, CreditCard, RotateCcw } from "lucide-react";
-import type { Sale, SalePayment } from '@/types';
+import { Printer, CreditCard, RotateCcw, AlertCircle } from "lucide-react";
+import type { Sale, SalePayment, CompanySettings } from '@/types';
 import { format } from 'date-fns';
-import { triggerPrint } from '@/lib/print-utils'; // Import the print utility
+import { triggerPrint } from '@/lib/print-utils';
+import { useQuery } from '@tanstack/react-query';
+import { getCompanySettings } from '@/services/settingsService';
+import { Skeleton } from '../ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
+
 
 interface SalesDetailsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sale: Sale | null;
-  onReprint?: (saleId: string) => void; // Keep if custom logic needed, else remove
+  // onReprint prop is now handled internally by fetching settings
   onReturnSale?: (sale: Sale) => void;
   onAddPayment?: (sale: Sale) => void;
 }
@@ -50,21 +55,28 @@ export function SalesDetailsDialog({
   open,
   onOpenChange,
   sale,
-  onReprint, // Kept for flexibility, though triggerPrint will be used directly
   onReturnSale,
   onAddPayment,
 }: SalesDetailsDialogProps) {
+  const { toast } = useToast();
+  const { data: companySettings, isLoading: isLoadingSettings, error: settingsError } = useQuery<CompanySettings | null, Error>({
+    queryKey: ['companySettings'],
+    queryFn: getCompanySettings,
+    enabled: open && !!sale, // Only fetch when dialog is open and sale data exists
+  });
+
   if (!sale) return null;
 
   const canReturn = sale.status !== 'Returned' && sale.status !== 'Cancelled' && !!onReturnSale;
   const canAddPayment = (sale.status === 'PendingPayment' || sale.status === 'PartiallyPaid') && !!onAddPayment;
 
-  const handleReprintClick = () => {
-    if (sale) {
-      triggerPrint(sale);
-      if (onReprint && sale.id) { // If there's custom logic passed via onReprint
-        onReprint(sale.id);
-      }
+  const handleReprintClick = async () => {
+    if (sale && companySettings) {
+      await triggerPrint(sale, companySettings);
+    } else if (sale && !companySettings && !isLoadingSettings) {
+      toast({variant: "destructive", title: "Cannot Print", description: "Company settings are not loaded or available."})
+    } else if (isLoadingSettings) {
+        toast({variant: "outline", title: "Please wait", description: "Loading company settings for printing..."})
     }
   };
 
@@ -79,6 +91,19 @@ export function SalesDetailsDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+          {isLoadingSettings && (
+            <div className="space-y-2 p-4 border rounded-md">
+              <Skeleton className="h-4 w-1/3 mb-2" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-3/4" />
+            </div>
+          )}
+          {settingsError && (
+            <div className="text-destructive flex items-center gap-2 p-3 border border-destructive/50 rounded-md bg-destructive/10">
+                <AlertCircle className="h-5 w-5" />
+                <span>Error loading company settings for print: {settingsError.message}</span>
+            </div>
+          )}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Customer &amp; Date</CardTitle>
@@ -161,8 +186,8 @@ export function SalesDetailsDialog({
           </Card>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={handleReprintClick}>
-            <Printer className="mr-2 h-4 w-4" /> Re-print Invoice
+          <Button variant="outline" onClick={handleReprintClick} disabled={isLoadingSettings || !companySettings}>
+            <Printer className="mr-2 h-4 w-4" /> {isLoadingSettings ? "Loading Settings..." : "Re-print Invoice"}
           </Button>
           <Button variant="secondary" onClick={() => onOpenChange(false)}>Close</Button>
         </DialogFooter>

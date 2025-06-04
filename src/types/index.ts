@@ -98,3 +98,20 @@ export interface SalesCartItem extends SaleItem {
   stock: number; // To check against available stock
 }
 
+export interface CompanySettings {
+  id?: string; // Should be a fixed ID like 'main'
+  storeName: string;
+  storeAddress: string;
+  storePhone?: string;
+  storeEmail?: string;
+  storeWebsite?: string;
+  logoUrl?: string;
+  invoiceTagline?: string;
+  defaultTaxRate?: number; // e.g., 0.05 for 5%
+  receiptHeader?: string;
+  receiptFooter?: string;
+  invoiceTerms?: string;
+  authorizedSignature?: string; // Name or title for signature line
+  enableLowStockAlerts?: boolean; // App-specific setting
+  updatedAt?: string; // ISO Date string
+}
