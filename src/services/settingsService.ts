@@ -1,5 +1,5 @@
 
-'use server';
+'use client';
 
 import { db, Timestamp } from '@/lib/firebase';
 import type { CompanySettings } from '@/types';

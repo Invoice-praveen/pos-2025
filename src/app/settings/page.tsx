@@ -31,7 +31,7 @@ const settingsSchema = z.object({
   defaultTaxRate: z.preprocess(
     (val) => (typeof val === 'string' && val.trim() !== '' ? parseFloat(val) : undefined),
     z.number().min(0).max(100).optional()
-  ).transform(val => (val !== undefined ? val / 100 : undefined)), // Store as decimal, e.g., 5% -> 0.05
+  ).transform(val => (val !== undefined ? val / 100 : 0)), // Store as decimal, e.g., 5% -> 0.05
   receiptHeader: z.string().optional(),
   receiptFooter: z.string().optional(),
   invoiceTerms: z.string().optional(),

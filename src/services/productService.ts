@@ -1,7 +1,7 @@
 
-'use server';
+'use client';
 
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import type { Product } from '@/types';
 import {
   collection,
@@ -89,6 +89,7 @@ const convertTimestampToString = (timestampField: unknown, fieldName?: string, d
 
 
 export async function getProducts(): Promise<Product[]> {
+  console.log(auth.currentUser, "CUrrent User")
   console.log(`[${SERVICE_NAME}] getProducts: Attempting to fetch products.`);
   const q = query(productsCollectionRef, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);

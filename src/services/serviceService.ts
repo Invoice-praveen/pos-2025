@@ -1,5 +1,5 @@
 
-'use server';
+'use client';
 
 import { db } from '@/lib/firebase';
 import type { Service, ServiceStatus, ServiceType } from '@/types'; // Ensure correct import path and types

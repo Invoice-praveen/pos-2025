@@ -45,7 +45,7 @@ function MainAppLayout({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <NextTopLoader />
+      <NextTopLoader color="red" />
       <SidebarProvider defaultOpen>
         <div className="flex min-h-screen w-full">
           <Sidebar collapsible="icon" className="border-r">
