@@ -558,7 +558,7 @@ export default function SalesPage() {
             <CardFooter className="flex-col gap-2 p-3 border-t">
               <Button 
                 size="lg" 
-                className="w-full bg-green-600 hover:bg-green-700 text-white" 
+                className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" 
                 onClick={handleFullPay}
                 disabled={addSaleMutation.isPending || totalItems === 0 || !selectedCustomerId || isLoadingSettings}
               >
@@ -577,7 +577,7 @@ export default function SalesPage() {
         </div>
       </div>
 
-      <div className="shrink-0 grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+      <div className="shrink-0 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
         {['Change Quantity [F2]', 'Item Discount [F3]', 'Remove Item [F4]', 'Bill Tax [F7]', 'Additional Charges [F8]', 'Bill Discount [F9]', 'Loyalty Points [F10]', 'Remarks [F12]'].map(label => (
           <Button key={label} variant="outline" className="text-xs h-10 bg-background whitespace-normal text-center leading-tight justify-center" disabled>
             {label}

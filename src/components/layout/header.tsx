@@ -33,7 +33,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center space-x-4 sm:justify-between sm:space-x-0">
+      <div className="w-full px-4 sm:px-6 md:px-8 flex h-16 items-center space-x-4 sm:justify-between sm:space-x-0">
         <div className="flex items-center gap-2">
           <SidebarTrigger className="md:hidden" />
           <Link href="/" className="flex items-center space-x-2">
@@ -52,7 +52,7 @@ export function Header() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user.photoURL || undefined} alt={user.displayName || user.email || 'User'} data-ai-hint="person user" />
+                    <AvatarImage src={user.photoURL || undefined} alt={user.displayName || user.email || 'User'} data-ai-hint="person user"/>
                     <AvatarFallback>{getAvatarFallback(user.displayName, user.email)}</AvatarFallback>
                   </Avatar>
                 </Button>
