@@ -11,12 +11,14 @@ export type IconName =
   | 'Wrench' 
   | 'CreditCard' 
   | 'Settings'
-  | 'History'; // Added History icon
+  | 'History'
+  | 'Truck' // For Suppliers/Purchases
+  | 'PackagePlus'; // For Purchases specifically
 
 export interface NavItem {
   title: string;
   href: string;
-  icon: IconName; // Changed from LucideIcon to IconName (string)
+  icon: IconName; 
   label?: string;
   disabled?: boolean;
   external?: boolean;
@@ -35,7 +37,7 @@ export const navItems: NavItem[] = [
     icon: 'ShoppingCart',
   },
   {
-    title: 'Sales History', // Added Sales History
+    title: 'Sales History',
     href: '/sales-history',
     icon: 'History',
   },
@@ -43,6 +45,16 @@ export const navItems: NavItem[] = [
     title: 'Inventory',
     href: '/inventory',
     icon: 'Boxes',
+  },
+  {
+    title: 'Purchases', // New Purchase link
+    href: '/purchases',
+    icon: 'PackagePlus', 
+  },
+  {
+    title: 'Suppliers', // New Suppliers link
+    href: '/suppliers',
+    icon: 'Truck', 
   },
   {
     title: 'Customers',
@@ -68,6 +80,6 @@ export const bottomNavItems: NavItem[] = [
         title: 'Settings',
         href: '/settings',
         icon: 'Settings',
-        disabled: false, // Enabled settings page
+        disabled: false, 
     }
 ]

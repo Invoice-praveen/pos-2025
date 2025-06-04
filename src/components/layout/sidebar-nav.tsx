@@ -18,7 +18,9 @@ import {
   Wrench, 
   CreditCard, 
   Settings,
-  History, // Added History
+  History,
+  Truck, // Added Truck icon
+  PackagePlus, // Added PackagePlus icon
   type LucideIcon
 } from 'lucide-react';
 import type { ForwardRefExoticComponent, RefAttributes } from 'react';
@@ -32,7 +34,9 @@ const iconMap: Record<IconName, LucideIcon> = {
   Wrench,
   CreditCard,
   Settings,
-  History, // Added History
+  History,
+  Truck, // Mapped Truck icon
+  PackagePlus, // Mapped PackagePlus icon
 };
 
 interface SidebarNavProps {
@@ -50,9 +54,8 @@ export function SidebarNav({ items }: SidebarNavProps) {
     <SidebarMenu>
       {items.map((item, index) => {
         const IconComponent = iconMap[item.icon];
-        // const isActive = item.href === "/" ? pathname === item.href : pathname.startsWith(item.href);
-        const isActive = item.href === "/" ? pathname === item.href : pathname === item.href;
-        
+        const isActive = item.href === "/" ? pathname === item.href : pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href + "/")); // More robust active check for nested routes
+
         return (
           item.href && IconComponent && (
             <SidebarMenuItem key={index}>
@@ -91,4 +94,3 @@ export function SidebarNav({ items }: SidebarNavProps) {
     </SidebarMenu>
   );
 }
-

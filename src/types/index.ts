@@ -41,7 +41,6 @@ export interface Service {
   serviceType: ServiceType;
   status: ServiceStatus;
   cost?: number;
-  // assignedTo?: string; // Consider adding later if needed
   serviceDate: string; // ISO Date string - when the service was requested/logged or scheduled
   completionDate?: string; // ISO Date string - when completed
   notes?: string;
@@ -114,4 +113,48 @@ export interface CompanySettings {
   authorizedSignature?: string; // Name or title for signature line
   enableLowStockAlerts?: boolean; // App-specific setting
   updatedAt?: string; // ISO Date string
+}
+
+// ----- Purchase Module Types -----
+export interface Supplier {
+  id?: string;
+  name: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PurchaseItem {
+  productId: string; // ID of the product from inventory
+  productName: string; // Denormalized for display
+  sku?: string;
+  qty: number;
+  costPriceUnit: number; // Price paid to supplier per unit
+  totalCost: number; // qty * costPriceUnit
+}
+
+export type PurchasePaymentStatus = 'Unpaid' | 'PartiallyPaid' | 'Paid';
+
+export interface Purchase {
+  id?: string;
+  supplierId: string;
+  supplierName: string; // Denormalized
+  items: PurchaseItem[];
+  purchaseOrderNumber?: string; // Optional PO number
+  purchaseDate: string; // ISO Date string
+  expectedDeliveryDate?: string; // ISO Date string
+  subTotal: number; // Sum of totalCost for all items
+  shippingCost?: number;
+  otherCharges?: number;
+  totalAmount: number; // subTotal + shippingCost + otherCharges
+  amountPaid: number;
+  paymentStatus: PurchasePaymentStatus;
+  // Consider adding payments array similar to SalePayment if tracking multiple payments
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
