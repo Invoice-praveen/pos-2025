@@ -4,11 +4,9 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import '@/components/invoice/invoice-template.css'; // Import print CSS globally
-import 'nprogress/nprogress.css'; // Import nprogress's base CSS
 import { Toaster } from "@/components/ui/toaster";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarInset } from "@/components/ui/sidebar";
 import { Header } from '@/components/layout/header';
-import { TopLoader } from '@/components/layout/top-loader'; // Import TopLoader
 import { SidebarNav } from '@/components/layout/sidebar-nav';
 import { navItems, bottomNavItems } from '@/config/nav';
 import Link from 'next/link';
@@ -17,6 +15,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import type { ReactNode } from 'react';
 import { AuthProvider } from '@/context/AuthContext';
+import NextTopLoader from 'nextjs-toploader';
+
 
 // Metadata can't be generated in a client component directly,
 // so we export it from here if layout becomes client component.
@@ -54,7 +54,8 @@ export default function RootLayout({
       <body className="font-body antialiased min-h-screen bg-background text-foreground flex flex-col">
         <AuthProvider>
           <QueryClientProvider client={queryClient}>
-            <TopLoader /> {/* Add TopLoader here, early in the body */}
+            {/* <TopLoader /> */}
+            <NextTopLoader color={"text-primary"} />
             <SidebarProvider defaultOpen>
               <div className="flex min-h-screen w-full">
                 <Sidebar collapsible="icon" className="border-r">

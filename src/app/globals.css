@@ -19,7 +19,7 @@
     --popover: 0 0% 12%;
     --popover-foreground: 0 0% 95%;
 
-    --primary: 0 80% 55%; /* Vibrant Red */
+    --primary: 350 75% 55%; /* Strong, slightly crimson/deep red */
     --primary-foreground: 0 0% 98%; /* Light Gray/White for text on primary */
 
     --secondary: 0 0% 18%; /* Dark Gray for secondary elements */
@@ -28,32 +28,32 @@
     --muted: 0 0% 22%; /* Muted Dark Gray */
     --muted-foreground: 0 0% 60%; /* Darker Muted Text */
 
-    --accent: 0 70% 50%; /* Strong Red for Accent */
+    --accent: 0 85% 60%; /* Brighter, classic red for Accent */
     --accent-foreground: 0 0% 98%; /* Light Gray/White text on accent */
 
-    --destructive: 0 80% 55%; /* Consistent Red for destructive actions */
+    --destructive: 0 100% 50%; /* Vibrant, pure red for destructive actions */
     --destructive-foreground: 0 0% 98%;
 
     --border: 0 0% 20%; /* Dark Gray Border */
     --input: 0 0% 15%; /* Dark Input Background */
-    --ring: 0 80% 60%; /* Brighter Red for Rings */
+    --ring: 0 85% 65%; /* Brighter red for Rings (related to accent) */
 
-    --chart-1: 0 80% 55%; /* Primary Red */
-    --chart-2: 0 70% 50%; /* Accent Red */
-    --chart-3: 0 0% 60%; /* Muted Foreground Gray */
-    --chart-4: 43 74% 66%; /* Keeping some variety for charts, adjust if needed */
-    --chart-5: 27 87% 67%; /* Keeping some variety for charts, adjust if needed */
+    --chart-1: hsl(var(--primary)); /* Deep Red */
+    --chart-2: hsl(var(--accent)); /* Brighter Red */
+    --chart-3: 350 60% 45%; /* Darker shade related to primary */
+    --chart-4: 0 70% 50%;   /* Mid-tone, less saturated red */
+    --chart-5: 0 0% 50%;   /* Neutral Gray for contrast */
     --radius: 0.5rem;
 
     /* Sidebar specific colors - Red & Black Theme */
     --sidebar-background: 0 0% 5%; /* Even Darker Black */
     --sidebar-foreground: 0 0% 85%;   /* Light grayish text */
-    --sidebar-primary: 0 80% 55%;   /* Active item text/icon color: Primary Red */
+    --sidebar-primary: hsl(var(--primary));   /* Active item text/icon color: Primary Red */
     --sidebar-primary-foreground: 0 0% 98%; /* Active item text on primary red background */
     --sidebar-accent: 0 0% 10%;    /* Hover item background: Slightly lighter black */
     --sidebar-accent-foreground: 0 0% 95%; /* Hover item text: White */
     --sidebar-border: 0 0% 15%;    /* Border for sidebar elements */
-    --sidebar-ring: 0 80% 60%;      /* Ring color for focus, matching primary ring */
+    --sidebar-ring: hsl(var(--ring));      /* Ring color for focus, matching main ring */
   }
 
   .dark {
@@ -64,32 +64,34 @@
     --card-foreground: 0 0% 95%;
     --popover: 0 0% 12%;
     --popover-foreground: 0 0% 95%;
-    --primary: 0 80% 55%;
+    --primary: 350 75% 55%;
     --primary-foreground: 0 0% 98%;
     --secondary: 0 0% 18%;
     --secondary-foreground: 0 0% 80%;
     --muted: 0 0% 22%;
     --muted-foreground: 0 0% 60%;
-    --accent: 0 70% 50%;
+    --accent: 0 85% 60%;
     --accent-foreground: 0 0% 98%;
-    --destructive: 0 80% 55%;
+    --destructive: 0 100% 50%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 20%;
     --input: 0 0% 15%;
-    --ring: 0 80% 60%;
+    --ring: 0 85% 65%;
 
-    --chart-1: 0 80% 55%;
-    --chart-2: 0 70% 50%;
-    --chart-3: 0 0% 60%;
+    --chart-1: hsl(var(--primary));
+    --chart-2: hsl(var(--accent));
+    --chart-3: 350 60% 45%;
+    --chart-4: 0 70% 50%;
+    --chart-5: 0 0% 50%;
     
     --sidebar-background: 0 0% 5%;
     --sidebar-foreground: 0 0% 85%;
-    --sidebar-primary: 0 80% 55%;
+    --sidebar-primary: hsl(var(--primary));
     --sidebar-primary-foreground: 0 0% 98%;
     --sidebar-accent: 0 0% 10%;
     --sidebar-accent-foreground: 0 0% 95%;
     --sidebar-border: 0 0% 15%;
-    --sidebar-ring: 0 80% 60%;
+    --sidebar-ring: hsl(var(--ring));
   }
 }
 
@@ -104,7 +106,7 @@
 
 /* NProgress Custom Styles */
 #nprogress .bar {
-  background: linear-gradient(to right, hsl(var(--primary)), hsl(30, 100%, 50%)); /* Red to Orange */
+  background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--accent))); /* Updated to use new primary and accent for gradient */
   position: fixed;
   z-index: 1031;
   top: 0;
