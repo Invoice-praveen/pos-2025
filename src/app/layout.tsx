@@ -14,8 +14,10 @@ import { Store } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import type { ReactNode } from 'react';
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext'; // Added useAuth
 import NextTopLoader from 'nextjs-toploader';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; // Added
+import { Skeleton } from '@/components/ui/skeleton'; // Added
 
 
 // Metadata can't be generated in a client component directly,
@@ -42,6 +44,18 @@ export default function RootLayout({
 }: Readonly<{
   children: ReactNode;
 }>) {
+  const { user, loading: authLoading } = useAuth();
+
+  const getAvatarFallbackText = (name?: string | null, email?: string | null) => {
+    if (name) {
+      return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+    }
+    if (email) {
+      return email[0].toUpperCase();
+    }
+    return 'U';
+  };
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -54,16 +68,39 @@ export default function RootLayout({
       <body className="font-body antialiased min-h-screen bg-background text-foreground flex flex-col">
         <AuthProvider>
           <QueryClientProvider client={queryClient}>
-            {/* <TopLoader /> */}
-            <NextTopLoader color={"text-primary"} />
+            <NextTopLoader />
             <SidebarProvider defaultOpen>
               <div className="flex min-h-screen w-full">
                 <Sidebar collapsible="icon" className="border-r">
-                  <SidebarHeader className="p-4">
-                     <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
-                        <Store className="h-6 w-6 text-primary flex-shrink-0" />
+                  <SidebarHeader className="p-4 flex items-center group-data-[collapsible=icon]:justify-center">
+                    {authLoading ? (
+                       <div className="flex items-center gap-2 w-full group-data-[collapsible=icon]:justify-center">
+                        <Skeleton className="h-8 w-8 rounded-full group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:w-10 flex-shrink-0" />
+                        <Skeleton className="h-5 w-2/3 group-data-[collapsible=icon]:hidden" />
+                       </div>
+                    ) : user ? (
+                      <div className="flex items-center gap-2 w-full overflow-hidden group-data-[collapsible=icon]:justify-center">
+                        <Avatar className="h-8 w-8 group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:w-10 flex-shrink-0">
+                          <AvatarImage src={user.photoURL || undefined} alt={user.displayName || user.email || 'User'} data-ai-hint="person user" />
+                          <AvatarFallback>{getAvatarFallbackText(user.displayName, user.email)}</AvatarFallback>
+                        </Avatar>
+                        <div className="ml-1 group-data-[collapsible=icon]:hidden overflow-hidden flex-grow min-w-0">
+                          <p className="text-sm font-semibold truncate" title={user.displayName || user.email || undefined}>
+                            {user.displayName || user.email}
+                          </p>
+                          {user.displayName && user.email && (
+                            <p className="text-xs text-muted-foreground truncate" title={user.email}>
+                              {user.email}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+                        <Store className="h-6 w-6 text-primary flex-shrink-0 group-data-[collapsible=icon]:h-7 group-data-[collapsible=icon]:w-7" />
                         <span className="font-bold text-lg font-headline group-data-[collapsible=icon]:hidden">OrderFlow</span>
-                     </Link>
+                      </Link>
+                    )}
                   </SidebarHeader>
                   <SidebarContent className="flex-grow p-2">
                     <SidebarNav items={navItems} />
