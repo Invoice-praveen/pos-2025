@@ -50,6 +50,7 @@ export async function getExpenses(): Promise<Expense[]> {
       id: docId,
       expenseDate: convertTimestampToString(data.expenseDate, 'expenseDate', docId)!,
       category: data.category as ExpenseCategory,
+      otherCategoryDetail: data.otherCategoryDetail,
       amount: data.amount,
       payee: data.payee,
       description: data.description,
@@ -62,17 +63,24 @@ export async function getExpenses(): Promise<Expense[]> {
 }
 
 export async function addExpense(expenseData: Omit<Expense, 'id' | 'createdAt' | 'updatedAt' | 'expenseDate'> & { expenseDate: Date }): Promise<Expense> {
-  const docRef = await addDoc(expensesCollectionRef, {
+  const dataToSave: any = {
     ...expenseData,
     expenseDate: Timestamp.fromDate(expenseData.expenseDate), // Store as Firestore Timestamp
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  };
+
+  if (expenseData.category !== "Other") {
+    dataToSave.otherCategoryDetail = null; // Ensure it's cleared if not 'Other'
+  }
+
+  const docRef = await addDoc(expensesCollectionRef, dataToSave);
   const nowISO = new Date().toISOString();
   return { 
     ...expenseData, 
     id: docRef.id, 
     expenseDate: expenseData.expenseDate.toISOString(),
+    otherCategoryDetail: expenseData.category === "Other" ? expenseData.otherCategoryDetail : undefined,
     createdAt: nowISO, 
     updatedAt: nowISO,
   }; 
@@ -84,6 +92,14 @@ export async function updateExpense(id: string, expenseData: Partial<Omit<Expens
 
   if (expenseData.expenseDate) {
     updatePayload.expenseDate = Timestamp.fromDate(expenseData.expenseDate);
+  }
+  if (expenseData.category && expenseData.category !== "Other") {
+    updatePayload.otherCategoryDetail = null; // Clear detail if category changed from 'Other'
+  } else if (expenseData.category === "Other" && !expenseData.hasOwnProperty('otherCategoryDetail')) {
+    // If category is "Other" but otherCategoryDetail is not explicitly provided in the update,
+    // we don't want to accidentally clear it if it already exists.
+    // So, we remove it from updatePayload unless it's explicitly being set.
+    // If it's explicitly set to null/undefined by the form, it will be handled.
   }
   
   await updateDoc(expenseDoc, {

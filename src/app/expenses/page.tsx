@@ -30,7 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -45,10 +45,19 @@ import { cn } from '@/lib/utils';
 const expenseSchema = z.object({
   expenseDate: z.date({ required_error: "Expense date is required." }),
   category: z.enum(expenseCategories, { required_error: "Category is required." }),
+  otherCategoryDetail: z.string().optional(),
   amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
   payee: z.string().optional(),
   description: z.string().optional(),
   notes: z.string().optional(),
+}).refine(data => {
+  if (data.category === "Other") {
+    return !!data.otherCategoryDetail && data.otherCategoryDetail.trim().length > 0;
+  }
+  return true;
+}, {
+  message: "Details for 'Other' category are required.",
+  path: ["otherCategoryDetail"], 
 });
 
 type ExpenseFormData = z.infer<typeof expenseSchema>;
@@ -71,6 +80,7 @@ export default function ExpensesPage() {
     defaultValues: {
       expenseDate: new Date(),
       category: expenseCategories[0],
+      otherCategoryDetail: "",
       amount: 0,
       payee: "",
       description: "",
@@ -78,12 +88,15 @@ export default function ExpensesPage() {
     },
   });
 
+  const watchedCategory = form.watch("category");
+
   useEffect(() => {
     if (isFormDialogOpen) {
       if (expenseToEdit) {
         form.reset({
           expenseDate: expenseToEdit.expenseDate ? parseISO(expenseToEdit.expenseDate) : new Date(),
           category: expenseToEdit.category,
+          otherCategoryDetail: expenseToEdit.otherCategoryDetail || "",
           amount: expenseToEdit.amount,
           payee: expenseToEdit.payee || "",
           description: expenseToEdit.description || "",
@@ -91,7 +104,7 @@ export default function ExpensesPage() {
         });
       } else {
         form.reset({
-          expenseDate: new Date(), category: expenseCategories[0], amount: 0, payee: "", description: "", notes: ""
+          expenseDate: new Date(), category: expenseCategories[0], otherCategoryDetail: "", amount: 0, payee: "", description: "", notes: ""
         });
       }
     }
@@ -156,10 +169,15 @@ export default function ExpensesPage() {
   });
 
   const onSubmit: SubmitHandler<ExpenseFormData> = (data) => {
+    const dataToSubmit = { ...data };
+    if (data.category !== "Other") {
+      dataToSubmit.otherCategoryDetail = ""; // Clear detail if category is not 'Other'
+    }
+
     if (expenseToEdit && expenseToEdit.id) {
-      updateExpenseMutation.mutate({ id: expenseToEdit.id, expenseData: data });
+      updateExpenseMutation.mutate({ id: expenseToEdit.id, expenseData: dataToSubmit });
     } else {
-      addExpenseMutation.mutate(data);
+      addExpenseMutation.mutate(dataToSubmit);
     }
   };
 
@@ -182,6 +200,13 @@ export default function ExpensesPage() {
     if (expenseToDeleteId) {
       deleteExpenseMutation.mutate(expenseToDeleteId);
     }
+  };
+
+  const getCategoryDisplay = (expense: Expense) => {
+    if (expense.category === "Other" && expense.otherCategoryDetail) {
+      return `Other (${expense.otherCategoryDetail})`;
+    }
+    return expense.category;
   };
 
   return (
@@ -215,6 +240,11 @@ export default function ExpensesPage() {
               <FormField control={form.control} name="category" render={({ field }) => (
                   <FormItem><FormLabel>Category</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger></FormControl><SelectContent>{expenseCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
               )} />
+              {watchedCategory === "Other" && (
+                <FormField control={form.control} name="otherCategoryDetail" render={({ field }) => (
+                  <FormItem><FormLabel>Specify 'Other' Category</FormLabel><FormControl><Input placeholder="e.g., Special Event Catering" {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+              )}
               <FormField control={form.control} name="amount" render={({ field }) => (
                   <FormItem><FormLabel>Amount (₹)</FormLabel><FormControl><Input type="number" placeholder="0.00" {...field} step="0.01" /></FormControl><FormMessage /></FormItem>
               )} />
@@ -285,7 +315,7 @@ export default function ExpensesPage() {
                 {filteredExpenses.map((expense) => (
                   <TableRow key={expense.id}>
                     <TableCell>{format(parseISO(expense.expenseDate), 'PP')}</TableCell>
-                    <TableCell>{expense.category}</TableCell>
+                    <TableCell>{getCategoryDisplay(expense)}</TableCell>
                     <TableCell className="text-right font-medium">{expense.amount.toFixed(2)}</TableCell>
                     <TableCell>{expense.payee || '-'}</TableCell>
                     <TableCell className="truncate max-w-xs">{expense.description || '-'}</TableCell>

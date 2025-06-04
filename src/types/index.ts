@@ -173,6 +173,7 @@ export interface Expense {
   id?: string;
   expenseDate: string; // ISO Date string
   category: ExpenseCategory;
+  otherCategoryDetail?: string; // Detail if category is 'Other'
   amount: number;
   payee?: string; // Vendor or person paid
   description?: string;
