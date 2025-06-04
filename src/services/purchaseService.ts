@@ -16,7 +16,8 @@ import {
   Timestamp,
   writeBatch,
   increment,
-  where
+  where,
+  getDoc // Added getDoc here
 } from 'firebase/firestore';
 
 const purchasesCollectionRef = collection(db, 'purchases');
@@ -130,11 +131,11 @@ export async function addPurchase(
   const batch = writeBatch(db);
   const newPurchaseRef = doc(purchasesCollectionRef);
 
-  const supplierDoc = await getDoc(doc(suppliersCollectionRef, purchaseData.supplierId));
-  if (!supplierDoc.exists()) {
+  const supplierDocSnap = await getDoc(doc(suppliersCollectionRef, purchaseData.supplierId));
+  if (!supplierDocSnap.exists()) {
     throw new Error(`Supplier with ID ${purchaseData.supplierId} not found.`);
   }
-  const supplierName = supplierDoc.data()?.name || 'Unknown Supplier';
+  const supplierName = supplierDocSnap.data()?.name || 'Unknown Supplier';
 
   let paymentStatus: PurchasePaymentStatus = 'Unpaid';
   if (purchaseData.amountPaid >= purchaseData.totalAmount && purchaseData.totalAmount > 0) {
@@ -209,11 +210,11 @@ export async function updatePurchaseStatusAndPayment(
     newPaymentStatus = 'Unpaid';
   }
 
-  const updatePayload: Partial<Purchase> = {
+  const updatePayload: Partial<Purchase> & {updatedAt: any} = { // Ensure updatedAt type matches serverTimestamp
     status,
     amountPaid,
     paymentStatus: newPaymentStatus,
-    updatedAt: serverTimestamp() as any, // Using serverTimestamp
+    updatedAt: serverTimestamp(), 
   };
 
   // If moving to 'Ordered' or 'Completed' and it wasn't already in a stock-updated state
